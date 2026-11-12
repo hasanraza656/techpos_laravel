@@ -1,0 +1,193 @@
+{
+  "purpose": "Illustrative dummy inventory photos for explicitly requested local testing",
+  "generator": "Built-in image_gen tool",
+  "generated_on": "2026-11-12",
+  "dimensions": {
+    "width": 640,
+    "height": 640
+  },
+  "format": "image/webp",
+  "quality": 84,
+  "images": [
+    {
+      "sku": "TEST-001",
+      "name": "Basmati Rice 1kg",
+      "file": "TEST-001.webp",
+      "prompt": "Use case: product-mockup. Asset type: square grocery catalog product photo for test POS inventory. Subject: a neat transparent unbranded 1kg bag of long grain white basmati rice with a small plain sage green paper label, a small scatter of rice grains beside it. Single product, centered three-quarter view, warm off-white seamless studio background, soft realistic shadow, premium clean grocery photography, generous empty margins suitable for thumbnail display. No brand names, logos, watermarks, decorative text, price, collage or other products. Photorealistic."
+    },
+    {
+      "sku": "TEST-002",
+      "name": "Wheat Flour 5kg",
+      "file": "TEST-002.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a cream kraft 5kg wheat flour sack with a folded sealed top and simple wheat stalk illustration, unbranded, a small wooden scoop of pale flour next to it. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-003",
+      "name": "Sugar 1kg",
+      "file": "TEST-003.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a clear sealed 1kg bag filled with fine white sugar, simple plain peach paper label, tiny scattered sugar crystals beside it. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-004",
+      "name": "Cooking Oil 1L",
+      "file": "TEST-004.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a single clear one liter bottle filled with golden yellow cooking oil, dark green cap and simple blank cream label. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-005",
+      "name": "Tea 190g",
+      "file": "TEST-005.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a small rectangular dark green tea carton with a cream label and subtle tea leaf motif, no lettering, with a little loose black tea beside it. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-006",
+      "name": "Biscuits Pack",
+      "file": "TEST-006.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a neatly sealed warm cream and muted terracotta biscuit packet, two plain round golden tea biscuits leaning against it. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-007",
+      "name": "Noodles Pack",
+      "file": "TEST-007.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a sealed small instant noodle packet in muted warm yellow packaging, subtle blank cream label, a small nest of dry noodles beside it. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-008",
+      "name": "Salt 800g",
+      "file": "TEST-008.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a white and pale blue simple 800g salt packet with blank label and a small pinch of white salt crystals beside it. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-009",
+      "name": "Mineral Water 1.5L",
+      "file": "TEST-009.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a single clear 1.5 liter plastic bottle filled with sparkling clear mineral water, blue cap and simple pale blue blank label. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-010",
+      "name": "Cola 500ml",
+      "file": "TEST-010.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a single clear 500ml bottle of dark brown cola with black cap and muted red blank wrap label. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium grocery catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-011",
+      "name": "Orange Juice 1L",
+      "file": "TEST-011.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a one liter juice carton in subtle orange and cream with an orange fruit illustration and a small white pour cap, no lettering. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium household catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-012",
+      "name": "Milk 1L",
+      "file": "TEST-012.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a fresh one liter milk carton, cream white and muted sky blue design with no lettering, small screw top. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium household catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-013",
+      "name": "Dishwashing Liquid",
+      "file": "TEST-013.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a transparent ergonomic plastic bottle of bright green dishwashing liquid with dark green flip cap and a plain blank cream label. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium household catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-014",
+      "name": "Laundry Detergent 1kg",
+      "file": "TEST-014.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a neat sealed one kilogram laundry detergent pouch in white and muted blue with a simple abstract clean fabric motif, no lettering. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium household catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-015",
+      "name": "Tissue Box",
+      "file": "TEST-015.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a rectangular pastel sage tissue box with one soft white tissue gently pulled upward, unbranded. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium household catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-016",
+      "name": "Garbage Bags Roll",
+      "file": "TEST-016.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a compact roll of black household garbage bags partially unwound with simple kraft paper band, no lettering. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium household catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-017",
+      "name": "Bath Soap",
+      "file": "TEST-017.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a single smooth ivory bath soap bar resting partly outside its simple kraft and sage paper sleeve, no lettering. One centered product or single product pair as specified, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-018",
+      "name": "Shampoo 180ml",
+      "file": "TEST-018.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a small elegant sage green shampoo bottle with matching flip top cap and a simple blank cream front label. One centered product or single product pair as specified, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-019",
+      "name": "Toothpaste 100g",
+      "file": "TEST-019.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a single white toothpaste tube with mint green accents and white cap resting diagonally, simple clean unbranded packaging. One centered product or single product pair as specified, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-020",
+      "name": "Hand Sanitizer",
+      "file": "TEST-020.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a compact clear plastic hand sanitizer pump bottle with transparent gel inside and a small plain mint green label. One centered product or single product pair as specified, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-021",
+      "name": "USB Cable",
+      "file": "TEST-021.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a neatly coiled black USB-A to USB-C charging cable, visible silver connector ends, tied with a simple small kraft band. One centered product or single product pair as specified, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-022",
+      "name": "AA Batteries Pair",
+      "file": "TEST-022.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a pair of cylindrical silver and black AA batteries standing upright, simple clean blank metal casings, terminals visibly correct. One centered product or single product pair as specified, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-023",
+      "name": "Notebook A5",
+      "file": "TEST-023.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a closed A5 notebook with rich muted forest green hardcover, cream page edges and small cloth bookmark, no lettering. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-024",
+      "name": "Ballpoint Pen",
+      "file": "TEST-024.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a single elegant simple blue ballpoint pen lying diagonally, with transparent lower barrel and blue cap, unbranded. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-025",
+      "name": "Loose Rice per kg",
+      "file": "TEST-025.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a low round natural wooden bowl filled with uncooked long grain white rice, small natural scatter of grains beside the bowl. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-026",
+      "name": "Loose Lentils per kg",
+      "file": "TEST-026.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a low round natural wooden bowl filled with dry coral orange red lentils, small natural scatter of lentils beside the bowl. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-027",
+      "name": "Loose Almonds per kg",
+      "file": "TEST-027.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory product photograph. Subject: a low round natural wooden bowl filled with whole natural brown almonds, three almonds beside the bowl. One centered product, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-028",
+      "name": "Gift Wrapping",
+      "file": "TEST-028.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory service illustration photograph. Subject: a single small cuboid gift box neatly wrapped in kraft paper with a forest green satin ribbon and elegant bow, no tag or lettering; this is a representative photo for a gift wrapping service. Centered single arrangement, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-029",
+      "name": "Local Delivery",
+      "file": "TEST-029.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory service illustration photograph. Subject: a neatly sealed small brown cardboard delivery parcel with one plain blank cream address label and a simple dark green fabric strap beside it; this is a representative photo for a local delivery service. Centered single arrangement, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    },
+    {
+      "sku": "TEST-030",
+      "name": "Device Setup",
+      "file": "TEST-030.webp",
+      "prompt": "Use case: product-mockup. Asset type: square POS test inventory service illustration photograph. Subject: a compact modern unbranded tablet on a simple countertop stand, screen showing a minimal abstract sage green checkmark on pale background, small black USB cable beside it; this is a representative photo for a device setup service. Centered single arrangement, three-quarter front view, warm off-white seamless studio background, natural soft realistic contact shadow, clean premium retail catalog photography, generous margins. No brands, logos, watermark, prices, readable lettering, collage, people or unrelated products. Photorealistic."
+    }
+  ]
+}
