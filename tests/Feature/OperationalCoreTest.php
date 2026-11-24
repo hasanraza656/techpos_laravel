@@ -264,6 +264,29 @@ class OperationalCoreTest extends TestCase
         $this->postJson('/api/v1/operations/sales', $this->sale($p, $shift, ['customer' => $customer, 'lines' => [['product' => $p, 'quantity' => '2.000', 'expected_unit_price' => '80.00']], 'expected_total' => '160.00']))->assertCreated()->assertJsonPath('total', '160.00');
     }
 
+    public function test_receipt_number_uses_business_local_date_and_document_includes_customer(): void
+    {
+        DB::table('tenants')->where('id', $this->tenant->id)->update(['timezone' => 'Asia/Karachi']);
+        $p = $this->product();
+        $this->stock($p);
+        $shift = $this->shift();
+        // 23:10 UTC on Nov 24 is 04:10 on Nov 25 in Asia/Karachi (UTC+5).
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-24 23:10:41', 'UTC'));
+        $customer = $this->postJson('/api/v1/operations/customers', ['branch' => $this->branch, 'name' => 'Ahmed (test)', 'phone' => '03001234567', 'price_tier' => 'retail', 'marketing_consent' => false])->assertCreated()->json('public_id');
+        $payload = $this->sale($p, $shift, ['customer' => $customer]);
+        $res = $this->postJson('/api/v1/operations/sales', $payload)->assertCreated()
+            ->assertJsonPath('customer.name', 'Ahmed (test)')->assertJsonPath('customer.phone', '03001234567')->assertJsonPath('customer.public_id', $customer);
+        $this->assertSame('TP-261125-'.strtoupper(str_replace('-', '', $payload['idempotency_key'])), $res->json('receipt_number'));
+        // Stored timestamps remain UTC.
+        $this->assertSame('2026-11-24 23:10:41', (string) DB::table('sales')->where('public_id', $res->json('public_id'))->value('finalized_at'));
+        $this->getJson('/api/v1/operations/sales/'.$res->json('public_id'))->assertOk()->assertJsonPath('customer.name', 'Ahmed (test)');
+        // Walk-in sale: explicit null customer; still local business date.
+        $this->travelTo(\Carbon\Carbon::parse('2026-11-24 18:59:59', 'UTC'));
+        $walkIn = $this->postJson('/api/v1/operations/sales', $this->sale($p, $shift))->assertCreated()->assertJsonPath('customer', null);
+        $this->assertStringStartsWith('TP-261124-', $walkIn->json('receipt_number'));
+        $this->travelBack();
+    }
+
     private function enableReturns(): void
     {
         DB::table('subscriptions')->where('tenant_id', $this->tenant->id)->update(['plan_id' => DB::table('plans')->where('key', 'standard')->value('id')]);

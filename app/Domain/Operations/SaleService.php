@@ -127,7 +127,8 @@ final class SaleService
                     $lineRows[] = ['tenant_id' => $c->tenant->id, 'product_id' => $p->id, 'position' => $i + 1, 'name' => $p->name, 'sku' => $p->sku, 'unit' => $p->unit, 'quantity' => $line['quantity'], 'unit_price' => $line['unit_price'], 'tax_rate' => $p->tax_rate, 'tax_inclusive' => $p->tax_inclusive, 'stock_tracked' => $p->track_stock, 'subtotal' => $line['subtotal'], 'line_discount' => $line['line_discount'], 'cart_discount' => $line['cart_discount'], 'tax' => $line['tax'], 'total' => $line['total'], 'cost_value' => $cogs];
                 }
                 // UUID-derived receipt is globally unambiguous and needs no unsafe MAX()+1 counter.
-                $receipt = 'TP-'.now()->format('ymd').'-'.strtoupper(str_replace('-', '', $uuid));
+                // The date part is informational only and follows the business day (tenant timezone).
+                $receipt = 'TP-'.now($c->tenant->timezone ?: 'UTC')->format('ymd').'-'.strtoupper(str_replace('-', '', $uuid));
                 if (isset($data['client_occurred_at'])) {
                     $data['client_occurred_at'] = Carbon::parse($data['client_occurred_at'])->utc()->toDateTimeString();
                 }
@@ -203,6 +204,9 @@ final class SaleService
         });
         $data['business_name'] = $c->tenant->name;
         $data['branch_name'] = DB::table('branches')->where('id', $sale->branch_id)->value('name');
+        // Receipt-facing customer; historical sales still show it if the customer was archived later.
+        $customer = $sale->customer_id ? DB::table('customers')->where('tenant_id', $c->tenant->id)->where('id', $sale->customer_id)->first(['public_id', 'name', 'phone']) : null;
+        $data['customer'] = $customer ? ['public_id' => $customer->public_id, 'name' => $customer->name, 'phone' => $customer->phone] : null;
 
         return $data;
     }
