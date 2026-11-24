@@ -40,6 +40,8 @@ final class ManageController extends Controller
     {
         $u = User::where('public_id', $id)->lockForUpdate()->firstOrFail();
         abort_if($u->is_superadmin && ! $r->user()->is_superadmin, 403, 'Only a root administrator can manage another root.');
+        $access = app(PlatformAccess::class);
+        $access->assertCovers($r->user(), $access->rolePermissions($u->id));
 
         return $u;
     }
@@ -155,6 +157,8 @@ final class ManageController extends Controller
 
         return $cmd->run($r, 'clients.manage', function () use ($client, $d, $r) {
             $t = $this->client($client);
+            // Suspending must not silently un-archive; restoring an archived client is an explicit activate.
+            abort_if($d['action'] === 'suspend' && ($t->status === 'archived' || $t->deleted_at), 422, 'Restore this archived client before suspending it.');
             DB::table('tenants')->where('id', $t->id)->update(['status' => match ($d['action']) {
                 'suspend' => 'suspended','archive' => 'archived',default => 'active'
             }, 'deleted_at' => $d['action'] === 'archive' ? now() : null, 'updated_at' => now()]);
@@ -186,7 +190,8 @@ final class ManageController extends Controller
                     break;
                 case 'free':$change += ['plan_id' => DB::table('plans')->where('key', 'free')->value('id'), 'status' => 'active', 'starts_at' => now(), 'ends_at' => null, 'grace_ends_at' => null];
                     break;
-                case 'grace':abort_unless($plan->key !== 'free' && DB::table('subscription_payments')->where('tenant_id', $t->id)->where('status', 'approved')->exists(), 422, 'Grace requires a previously approved paid subscription.');
+                case 'grace':abort_unless(in_array($s->status, ['active', 'grace', 'expired']), 422, 'Resume or reactivate this subscription before granting grace.');
+                    abort_unless($plan->key !== 'free' && DB::table('subscription_payments')->where('tenant_id', $t->id)->where('status', 'approved')->exists(), 422, 'Grace requires a previously approved paid subscription.');
                     $change += ['status' => 'grace', 'grace_ends_at' => now()->addDays($d['days'])];
                     break;
                 case 'downgrade':$target = DB::table('plans')->where('key', $d['plan_key'])->where('active', true)->first();

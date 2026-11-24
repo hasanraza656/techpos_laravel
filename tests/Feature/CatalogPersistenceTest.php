@@ -24,4 +24,15 @@ class CatalogPersistenceTest extends TestCase
         $this->assertEquals(0, DB::table('feature_entitlements')->where('plan_id', $id)->count());
         $this->assertSame('custom-account', json_decode(DB::table('payment_methods')->where('key', 'bank')->value('details'), true)['account_number']);
     }
+
+    public function test_payment_instructions_come_from_environment_and_unconfigured_methods_stay_inactive(): void
+    {
+        config(['services.payment_instructions.jazzcash.account_number' => null]);
+        $this->seed();
+        $bank = DB::table('payment_methods')->where('key', 'bank')->first();
+        $this->assertTrue((bool) $bank->active);
+        $this->assertSame(['bank' => 'Test Bank', 'account_number' => 'TEST-0000000001', 'account_holder' => 'Test Holder'], json_decode($bank->details, true));
+        $this->assertFalse((bool) DB::table('payment_methods')->where('key', 'jazzcash')->value('active'));
+        $this->getJson('/api/v1/catalog')->assertOk()->assertJsonMissing(['name' => 'JazzCash']);
+    }
 }

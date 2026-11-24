@@ -54,6 +54,26 @@ final class BillingInvoices
         return $this->issue($p->tenant_id, $p->plan_id, $p->public_id, $p->expires_at->toDateString(), $p);
     }
 
+    /**
+     * A rejected or expired payment no longer backs its unpaid invoice. The invoice created for
+     * that request is voided; an invoice the platform issued separately stays owed and is only
+     * detached, so a later payment can settle it. Paid invoices are never touched.
+     */
+    public function releaseForPayment(SubscriptionPayment $p, string $reason): void
+    {
+        $invoice = DB::table('billing_invoices')->where('payment_id', $p->id)->where('status', 'issued')->lockForUpdate()->first();
+        if (! $invoice) {
+            return;
+        }
+        if ($invoice->request_key === $p->public_id) {
+            DB::table('billing_invoices')->where('id', $invoice->id)->update(['status' => 'void', 'voided_at' => now(), 'void_reason' => $reason, 'updated_at' => now()]);
+            Audit::record('billing.invoice_voided', $p->tenant_id, $invoice->public_id, ['reason' => $reason, 'payment' => $p->public_id]);
+        } else {
+            DB::table('billing_invoices')->where('id', $invoice->id)->update(['payment_id' => null, 'updated_at' => now()]);
+            Audit::record('billing.invoice_unlinked', $p->tenant_id, $invoice->public_id, ['reason' => $reason, 'payment' => $p->public_id]);
+        }
+    }
+
     public function paid(SubscriptionPayment $p, Carbon $start, Carbon $end): void
     {
         $invoice = $this->forPayment($p);

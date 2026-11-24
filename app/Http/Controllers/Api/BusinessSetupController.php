@@ -49,6 +49,8 @@ final class BusinessSetupController extends Controller
         $c->authorize('settings.tax');
         $d = $r->validate(['name' => 'required|string|max:80', 'default_rate' => ['required', 'string', 'regex:/^\d{1,3}(?:\.\d{1,4})?$/'], 'tax_inclusive' => 'required|boolean', 'registration_number' => 'nullable|string|max:100']);
         $d['default_rate'] = Decimal::input($d['default_rate'], 4);
+        // Store a real boolean: a validated "0" string would otherwise be truthy in the SPA.
+        $d['tax_inclusive'] = filter_var($d['tax_inclusive'], FILTER_VALIDATE_BOOLEAN);
         if (bccomp($d['default_rate'], '100', 4) > 0) {
             Decimal::fail('default_rate', 'Choose a rate between 0 and 100 percent.');
         }

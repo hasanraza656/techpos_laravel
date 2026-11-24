@@ -14,9 +14,9 @@ class MakePlatformAdmin extends Command
 
     public function handle(): int
     {
-        $u = User::where('email', $this->argument('email'))->first();
-        if (! $u || ! $u->hasVerifiedEmail()) {
-            $this->error('Register and verify this account before promotion.');
+        $u = User::where('email', mb_strtolower(trim($this->argument('email'))))->first();
+        if (! $u || ! $u->hasVerifiedEmail() || ($u->status ?? 'active') !== 'active') {
+            $this->error('Register, verify and keep this account active before promotion.');
 
             return self::FAILURE;
         }

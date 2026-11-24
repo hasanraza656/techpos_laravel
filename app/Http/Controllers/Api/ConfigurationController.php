@@ -91,8 +91,26 @@ class ConfigurationController extends Controller
         $d = $r->validate(['locale' => ['sometimes', Rule::in(LabelService::LOCALES)]]);
         $locale = $d['locale'] ?? $c->tenant->locale;
 
-        return ['locale' => $locale, 'direction' => in_array($locale, ['ur', 'ar']) ? 'rtl' : 'ltr', 'labels' => DB::table('label_translations')->where('locale', 'en')->get()->map(function ($l) use ($c, $labels, $locale) {
-            return ['key' => $l->key, 'section' => $l->section, 'default' => $l->value, 'value' => $labels->resolve($c->tenant->id, $l->key, $locale, $c->tenant->locale), 'override' => DB::table('label_overrides')->where('tenant_id', $c->tenant->id)->where('key', $l->key)->where('locale', $locale)->value('value')];
+        // Preload once instead of ~5 queries per label; resolution order matches LabelService::resolve().
+        $overrides = DB::table('label_overrides')->where('tenant_id', $c->tenant->id)->whereIn('locale', array_unique([$locale, $c->tenant->locale]))->get()->groupBy('locale')->map->pluck('value', 'key');
+        $reviewed = DB::table('label_translations')->whereIn('locale', array_unique([$locale, 'en']))->where('review_status', 'reviewed')->get()->groupBy('locale')->map->pluck('value', 'key');
+        $resolve = function (string $key) use ($overrides, $reviewed, $locale, $c) {
+            foreach (array_unique([$locale, $c->tenant->locale]) as $language) {
+                if (($value = $overrides[$language][$key] ?? null) !== null) {
+                    return $value;
+                }
+            }
+            foreach (array_unique([$locale, 'en']) as $language) {
+                if (($value = $reviewed[$language][$key] ?? null) !== null) {
+                    return $value;
+                }
+            }
+
+            return null;
+        };
+
+        return ['locale' => $locale, 'direction' => in_array($locale, ['ur', 'ar']) ? 'rtl' : 'ltr', 'labels' => DB::table('label_translations')->where('locale', 'en')->get()->map(function ($l) use ($locale, $overrides, $resolve) {
+            return ['key' => $l->key, 'section' => $l->section, 'default' => $l->value, 'value' => $resolve($l->key) ?? $l->key, 'override' => $overrides[$locale][$l->key] ?? null];
         })];
     }
 

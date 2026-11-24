@@ -27,7 +27,8 @@ final class TenantMedia
         if (! $dimensions || $dimensions[0] > 6000 || $dimensions[1] > 6000 || $dimensions[0] * $dimensions[1] > 16000000) {
             throw ValidationException::withMessages(['image' => 'Choose a JPEG, PNG or WebP up to 4 MB and 16 megapixels.']);
         }
-        $source = @imagecreatefromstring(file_get_contents($file->getRealPath()));
+        \App\Support\ImageMemory::assertDecodable($dimensions[0], $dimensions[1], 'image');
+        $source =@imagecreatefromstring(file_get_contents($file->getRealPath()));
         if (! $source) {
             throw ValidationException::withMessages(['image' => 'This image could not be read. Choose another file.']);
         }

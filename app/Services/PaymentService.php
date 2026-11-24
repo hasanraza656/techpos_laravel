@@ -32,7 +32,8 @@ final class PaymentService
             if (! in_array($p->status, ['pending_review', 'needs_information'])) {
                 throw ValidationException::withMessages(['status' => 'This payment is not awaiting review.']);
             }
-            if ($p->expires_at->isPast()) {
+            // A submitted request waits for review indefinitely; only customer-side states time out.
+            if ($p->status !== 'pending_review' && $p->expires_at->isPast()) {
                 throw ValidationException::withMessages(['status' => 'This payment request has expired.']);
             }
             if ($p->submitted_by === $reviewer) {
@@ -53,7 +54,12 @@ final class PaymentService
                 DB::table('subscription_events')->insert(['tenant_id' => $p->tenant_id, 'actor_id' => $reviewer, 'action' => 'payment_approved', 'before_state' => json_encode((array) $s), 'after_state' => json_encode(['plan_id' => $p->plan_id, 'status' => 'active', 'ends_at' => $periodEnd->toIso8601String()]), 'reason' => $note ?? 'Verified manual subscription payment', 'created_at' => now()]);
                 $p->applied_at = now();
             }
-            $p->fill(['status' => $decision, 'review_note' => $note, 'reviewed_by' => $reviewer, 'reviewed_at' => now()])->save();
+            // Asking for more information hands the request back to the customer with a fresh window.
+            $window = $decision === 'needs_information' && $p->expires_at->lt(now()->addDays(7)) ? ['expires_at' => now()->addDays(7)] : [];
+            $p->fill(['status' => $decision, 'review_note' => $note, 'reviewed_by' => $reviewer, 'reviewed_at' => now()] + $window)->save();
+            if ($decision === 'rejected') {
+                app(BillingInvoices::class)->releaseForPayment($p, 'Linked payment rejected');
+            }
             $this->event($p, $decision, $note);
             Audit::record('payment.'.$decision, $p->tenant_id, $p->public_id, ['amount' => $p->amount, 'plan_id' => $p->plan_id]);
 

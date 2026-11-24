@@ -105,6 +105,11 @@ class PlatformPortalTest extends TestCase
         $this->putJson('/api/v1/platform/clients/'.$id, $this->command(['name' => 'Updated Shop', 'country' => 'PK', 'timezone' => 'Asia/Karachi', 'email' => 'billing@example.test', 'address' => 'Test street']))->assertOk();
         foreach (['suspend', 'archive', 'activate'] as $action) {
             $this->postJson('/api/v1/platform/clients/'.$id.'/state', $this->command(['action' => $action]))->assertOk();
+            if ($action === 'archive') {
+                // Suspending an archived client must not quietly restore it.
+                $this->postJson('/api/v1/platform/clients/'.$id.'/state', $this->command(['action' => 'suspend']))->assertUnprocessable();
+                $this->assertNotNull(\Illuminate\Support\Facades\DB::table('tenants')->where('public_id', $id)->value('deleted_at'));
+            }
         }$this->getJson('/api/v1/platform/clients/'.$id)->assertOk()->assertJsonPath('name', 'Updated Shop')->assertJsonPath('status', 'active');
         $this->assertDatabaseCount('subscriptions', 3);
     }
@@ -243,6 +248,39 @@ class PlatformPortalTest extends TestCase
         $this->assertDatabaseHas('users', ['id' => $this->root->id, 'status' => 'active']);
     }
 
+    public function test_delegated_admins_cannot_take_over_or_demote_more_privileged_staff(): void
+    {
+        $billing = $this->staff(['billing.view', 'billing.manage', 'access.view', 'access.manage']);
+        $billingRole = DB::table('platform_user_roles as a')->join('platform_roles as r', 'r.id', '=', 'a.role_id')->where('a.user_id', $billing->id)->first(['r.public_id', 'r.version']);
+        $manager = $this->staff(['users.view', 'users.manage', 'access.view', 'access.manage', 'client_access.view', 'client_access.manage']);
+        $manager->password = 'StaffPassword123';
+        $manager->save();
+        $this->as($manager);
+        $cmd = fn (array $d) => $this->command($d + ['password' => 'StaffPassword123']);
+        $this->putJson('/api/v1/platform/users/'.$billing->public_id, $cmd(['name' => 'Hijacked', 'email' => $billing->email, 'new_password' => 'TakenOverPass123']))->assertForbidden();
+        $this->postJson('/api/v1/platform/users/'.$billing->public_id.'/state', $cmd(['action' => 'suspend']))->assertForbidden();
+        $this->postJson('/api/v1/platform/users/'.$billing->public_id.'/platform-roles', $cmd(['roles' => []]))->assertForbidden();
+        $this->putJson('/api/v1/platform/roles/'.$billingRole->public_id, $cmd(['name' => 'Stripped', 'permissions' => ['access.view', 'access.manage'], 'version' => $billingRole->version]))->assertForbidden();
+        $role = DB::table('roles')->where('tenant_id', $this->tenant->id)->where('name', 'Read-only Auditor')->value('public_id');
+        $this->postJson('/api/v1/platform/clients/'.$this->tenant->public_id.'/memberships', $cmd(['user' => $manager->public_id, 'action' => 'assign', 'role' => $role]))->assertUnprocessable();
+        $this->assertDatabaseMissing('tenant_users', ['user_id' => $manager->id]);
+        $this->assertDatabaseHas('users', ['id' => $billing->id, 'name' => $billing->name, 'status' => 'active']);
+        $this->assertDatabaseHas('platform_user_roles', ['user_id' => $billing->id]);
+    }
+
+    public function test_lapsed_grace_expires_and_suspended_subscription_cannot_be_graced(): void
+    {
+        $plan = DB::table('plans')->where('key', 'standard')->value('id');
+        DB::table('subscriptions')->where('tenant_id', $this->tenant->id)->update(['plan_id' => $plan, 'status' => 'grace', 'ends_at' => now()->subDays(10), 'grace_ends_at' => now()->subDay()]);
+        DB::table('subscriptions')->where('tenant_id', $this->other->id)->update(['plan_id' => $plan, 'status' => 'grace', 'ends_at' => now()->subDays(10), 'grace_ends_at' => now()->addDay()]);
+        $this->artisan('techpos:expire-subscriptions')->assertSuccessful();
+        $this->assertDatabaseHas('subscriptions', ['tenant_id' => $this->tenant->id, 'status' => 'expired']);
+        $this->assertDatabaseHas('subscriptions', ['tenant_id' => $this->other->id, 'status' => 'grace']);
+        DB::table('subscriptions')->where('tenant_id', $this->tenant->id)->update(['status' => 'suspended', 'status_before_suspension' => 'active']);
+        $this->postJson('/api/v1/platform/clients/'.$this->tenant->public_id.'/subscription', $this->command(['action' => 'grace', 'days' => 7]))->assertUnprocessable();
+        $this->assertDatabaseHas('subscriptions', ['tenant_id' => $this->tenant->id, 'status' => 'suspended']);
+    }
+
     public function test_permission_dependencies_and_client_role_versions_are_enforced(): void
     {
         $this->postJson('/api/v1/platform/roles', $this->command(['name' => 'Broken Role', 'permissions' => ['payments.review']]))->assertUnprocessable();
@@ -318,5 +356,14 @@ class PlatformPortalTest extends TestCase
         $r->assertJsonCount(1, 'branches')->assertJsonCount(1, 'warehouses');
         $this->assertSame(DB::table('branches')->where('tenant_id', $this->tenant->id)->value('public_id'), $r->json('branches.0.public_id'));
         $this->as($this->staff(['clients.view']))->getJson('/api/v1/platform/lookup?user_q='.urlencode($this->owner->email))->assertOk()->assertJsonCount(0, 'users');
+    }
+
+    public function test_client_scoped_staff_get_client_picker_without_owner_contact(): void
+    {
+        $billing = $this->as($this->staff(['billing.view']))->getJson('/api/v1/platform/lookup')->assertOk();
+        $this->assertNotEmpty($billing->json('clients'));
+        $this->assertArrayNotHasKey('owner_email', $billing->json('clients.0'));
+        $this->assertArrayHasKey('owner_email', $this->as($this->staff(['clients.view']))->getJson('/api/v1/platform/lookup')->assertOk()->json('clients.0'));
+        $this->as($this->staff(['leads.view']))->getJson('/api/v1/platform/lookup')->assertOk()->assertJsonCount(0, 'clients');
     }
 }

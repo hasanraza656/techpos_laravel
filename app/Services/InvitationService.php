@@ -90,7 +90,8 @@ final class InvitationService
 
     public function assertCashierLimit(int $tenantId, int $roleId, ?int $excludeUser = null, bool $includePending = false): void
     {
-        $cashierRoleIds = DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->where('permissions.key', 'sales.create')->pluck('role_id');
+        // Scope to this tenant's roles: an unscoped list grows with every tenant and eventually exceeds placeholder limits.
+        $cashierRoleIds = DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->join('roles', 'roles.id', '=', 'role_permissions.role_id')->where('roles.tenant_id', $tenantId)->where('permissions.key', 'sales.create')->pluck('role_id');
         if (! $cashierRoleIds->contains($roleId)) {
             return;
         }

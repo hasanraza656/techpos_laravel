@@ -30,15 +30,20 @@ class MobileProofController extends Controller
     {
         $this->token($token);
         $r->validate(['proof' => 'required|file|mimes:png,jpg,jpeg,webp|max:5120']);
-        DB::transaction(function () use ($token, $r, $service, $storage) {
-            $t = DB::table('payment_upload_tokens')->where('token_hash', hash('sha256', $token))->lockForUpdate()->first();
-            abort_unless($t && ! $t->used_at && now()->lt($t->expires_at), 410);
-            $p = SubscriptionPayment::whereKey($t->subscription_payment_id)->lockForUpdate()->firstOrFail();
-            $service->assertEditable($p);
-            $storage->store($p, $r->file('proof'));
-            DB::table('payment_upload_tokens')->where('id', $t->id)->update(['used_at' => now()]);
-            Audit::record('payment.mobile_proof_uploaded', $p->tenant_id, $p->public_id);
-        });
+        try {
+            DB::transaction(function () use ($token, $r, $service, $storage) {
+                $t = DB::table('payment_upload_tokens')->where('token_hash', hash('sha256', $token))->lockForUpdate()->first();
+                abort_unless($t && ! $t->used_at && now()->lt($t->expires_at), 410);
+                $p = SubscriptionPayment::whereKey($t->subscription_payment_id)->lockForUpdate()->firstOrFail();
+                $service->assertEditable($p);
+                $storage->store($p, $r->file('proof'));
+                DB::table('payment_upload_tokens')->where('id', $t->id)->update(['used_at' => now()]);
+                Audit::record('payment.mobile_proof_uploaded', $p->tenant_id, $p->public_id);
+            });
+        } catch (\Throwable $e) {
+            $storage->discardUncommitted();
+            throw $e;
+        }
 
         return response()->view('payments.mobile', ['success' => true])->header('Cache-Control', 'no-store');
     }

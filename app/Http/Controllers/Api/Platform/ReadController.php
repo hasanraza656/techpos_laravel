@@ -11,6 +11,9 @@ use Illuminate\Support\Facades\DB;
 
 final class ReadController extends Controller
 {
+    /** Platform grants whose screens are filtered by a client (kept in sync with Portal.tsx). */
+    public const CLIENT_SCOPED = ['clients.view', 'client_access.view', 'inventory.view', 'client_sales.view', 'subscriptions.view', 'payments.view', 'billing.view', 'audit.view'];
+
     private function clientsQuery()
     {
         return DB::table('tenants as t')->leftJoin('industries as i', 'i.id', '=', 't.industry_id')->leftJoin('subscriptions as s', 's.tenant_id', '=', 't.id')->leftJoin('plans as p', 'p.id', '=', 's.plan_id');
@@ -42,8 +45,12 @@ final class ReadController extends Controller
         $a = app(PlatformAccess::class);
         $perms = $a->permissions($r->user());
         $out = ['clients' => [], 'plans' => [], 'users' => []];
-        if (in_array('clients.view', $perms)) {
-            $q = DB::table('tenants')->select('public_id', 'name', 'status')->selectSub(DB::table('tenant_users as member')->join('users as owner', 'owner.id', '=', 'member.user_id')->whereColumn('member.tenant_id', 'tenants.id')->where('member.is_owner', true)->orderBy('owner.id')->limit(1)->select('owner.email'), 'owner_email');
+        // Every section that is filtered by client needs the picker; owner contact stays with clients.view.
+        if (array_intersect(self::CLIENT_SCOPED, $perms)) {
+            $q = DB::table('tenants')->select('public_id', 'name', 'status');
+            if (in_array('clients.view', $perms)) {
+                $q->selectSub(DB::table('tenant_users as member')->join('users as owner', 'owner.id', '=', 'member.user_id')->whereColumn('member.tenant_id', 'tenants.id')->where('member.is_owner', true)->orderBy('owner.id')->limit(1)->select('owner.email'), 'owner_email');
+            }
             Filters::search($q, $d, ['name']);
             $out['clients'] = $q->orderBy('name')->limit(30)->get();
             if ($r->filled('client')) {
@@ -104,7 +111,7 @@ final class ReadController extends Controller
             'active_paid' => (clone $active)->count(), 'free_clients' => max(0, (clone $clients)->where('t.status', 'active')->count() - (clone $active)->count()), 'users' => $users->count(), 'products' => (clone $products)->where('p.active', true)->count(),
             'pending_payments' => (clone $payments)->where('sp.status', 'pending_review')->count(), 'mrr' => $mrr, 'arr' => bcmul($mrr, '12', 2), 'collected_this_month' => bcadd((string) $collected, '0', 2),
             'renewals_due' => (clone $subs)->where('p.key', '!=', 'free')->whereIn('s.status', ['active', 'grace'])->whereBetween('s.ends_at', [now(), now()->addDays(14)])->count(),
-            'overdue_invoices' => (clone $invoices)->where('b.status', 'issued')->where('b.due_on', '<', now()->toDateString())->count(), 'history' => $history, 'recent_clients' => $recent,
+            'overdue_invoices' => (clone $invoices)->where('b.status', 'issued')->where('b.due_on', '<', now()->toDateString())->whereNotExists(fn ($w) => $w->selectRaw('1')->from('subscription_payments as w')->whereColumn('w.id', 'b.payment_id')->where('w.status', 'pending_review'))->count(), 'history' => $history, 'recent_clients' => $recent,
             'industry_distribution' => (clone $clients)->leftJoin('industries as i', 'i.id', '=', 't.industry_id')->groupBy('i.name')->selectRaw('i.name,COUNT(*) as count')->get(),
             'definitions' => ['mrr' => 'Current monthly PKR catalog run rate for active clients with unexpired paid rights; excludes unpaid invoices and pending proof.', 'collected' => 'Approved subscription payment amounts by review date; distinct from recurring run rate.', 'dates' => 'Platform trends use UTC. Client operational totals retain their own currency.']];
     }
@@ -189,7 +196,8 @@ final class ReadController extends Controller
             $q->where('p.key', $d['plan']);
         }
 
-        return $q->select('sp.public_id', 't.public_id as client', 't.name as business_name', 'p.name as plan_name', 'sp.currency', 'sp.amount', 'sp.status', 'sp.transaction_reference', 'sp.paid_on', 'sp.created_at', 'sp.expires_at', 'sp.reviewed_at', 'sp.review_note', 'm.name as method', 'b.public_id as invoice', 'b.number as invoice_number')->orderByDesc('sp.id')->paginate($d['per_page'] ?? 25);
+        return $q->select('sp.public_id', 't.public_id as client', 't.name as business_name', 'p.name as plan_name', 'sp.currency', 'sp.amount', 'sp.status', 'sp.transaction_reference', 'sp.paid_on', 'sp.created_at', 'sp.expires_at', 'sp.reviewed_at', 'sp.review_note', 'm.name as method', 'b.public_id as invoice', 'b.number as invoice_number')
+            ->selectSub(DB::table('payment_proofs as pp')->selectRaw('COUNT(*) > 0')->whereColumn('pp.subscription_payment_id', 'sp.id'), 'has_proof')->orderByDesc('sp.id')->paginate($d['per_page'] ?? 25);
     }
 
     public function payment(string $payment)
@@ -210,11 +218,15 @@ final class ReadController extends Controller
         Filters::client($q, $d);
         Filters::search($q, $d, ['b.number', 't.name']);
         if (($d['status'] ?? '') === 'overdue') {
-            $q->where('b.status', 'issued')->where('b.due_on', '<', now()->toDateString());
+            // Awaiting platform review is not overdue: the client has already paid and submitted proof.
+            $q->where('b.status', 'issued')->where('b.due_on', '<', now()->toDateString())->whereNotExists(fn ($w) => $w->selectRaw('1')->from('subscription_payments as w')->whereColumn('w.id', 'b.payment_id')->where('w.status', 'pending_review'));
         } elseif (! empty($d['status'])) {
             $q->where('b.status', $d['status']);
         }if (! empty($d['due'])) {
             Filters::due($q, $d, 'b.due_on', true);
+            if (($d['due'] ?? '') === 'overdue') {
+                $q->whereNotExists(fn ($w) => $w->selectRaw('1')->from('subscription_payments as w')->whereColumn('w.id', 'b.payment_id')->where('w.status', 'pending_review'));
+            }
             $q->where('b.status', 'issued');
         }
 

@@ -31,4 +31,12 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    // Initial manual-payment instructions used only when seeding a fresh database. Real account
+    // details stay in .env, never in source. Later edits belong in Platform settings.
+    'payment_instructions' => [
+        'bank' => ['bank' => env('PAYMENT_BANK_NAME'), 'account_number' => env('PAYMENT_BANK_ACCOUNT'), 'account_holder' => env('PAYMENT_BANK_HOLDER')],
+        'jazzcash' => ['account_number' => env('PAYMENT_JAZZCASH_ACCOUNT')],
+        'easypaisa' => ['account_number' => env('PAYMENT_EASYPAISA_ACCOUNT')],
+    ],
+
 ];

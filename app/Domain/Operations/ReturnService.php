@@ -26,7 +26,7 @@ final class ReturnService
                 return $this->document($c, $old->public_id);
             }
             DB::table('sales')->where('id', $sale->id)->lockForUpdate()->first();
-            abort_if(DB::table('sale_payments')->where('sale_id', $sale->id)->where('method', '!=', 'cash')->exists(), 422, 'This workflow supports cash-only source sales. Externally recorded and split-method refunds require a separate reconciliation workflow.');
+            abort_if(DB::table('sale_payments')->where('tenant_id', $c->tenant->id)->where('sale_id', $sale->id)->where('method', '!=', 'cash')->exists(), 422, 'This workflow supports cash-only source sales. Externally recorded and split-method refunds require a separate reconciliation workflow.');
             $shift = DB::table('register_shifts')->where('tenant_id', $c->tenant->id)->where('branch_id', $sale->branch_id)->where('public_id', $data['shift'])->lockForUpdate()->first();
             abort_unless($shift, 404, 'Shift not found.');
             abort_if($shift->closed_at, 422, 'Open a shift before refunding cash.');

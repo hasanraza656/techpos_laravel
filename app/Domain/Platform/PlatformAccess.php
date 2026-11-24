@@ -66,6 +66,18 @@ final class PlatformAccess
         return DB::table('platform_user_roles as a')->join('platform_role_permissions as p', 'p.role_id', '=', 'a.role_id')->where('a.user_id', $user->id)->distinct()->pluck('p.permission')->all();
     }
 
+    /** Permissions granted by a user's staff roles, regardless of account status. */
+    public function rolePermissions(int $userId): array
+    {
+        return DB::table('platform_user_roles as a')->join('platform_role_permissions as p', 'p.role_id', '=', 'a.role_id')->where('a.user_id', $userId)->distinct()->pluck('p.permission')->all();
+    }
+
+    /** A delegated administrator may only manage staff whose authority they fully hold. */
+    public function assertCovers(User $actor, array $permissions): void
+    {
+        abort_if(array_diff($permissions, $this->permissions($actor)), 403, 'You cannot manage staff or roles holding platform permissions you do not have.');
+    }
+
     public function enter(User $user): bool
     {
         return $this->permissions($user) !== [];

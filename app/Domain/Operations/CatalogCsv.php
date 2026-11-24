@@ -65,7 +65,7 @@ final class CatalogCsv
         try {
             DB::table('tenants')->where('id', $c->tenant->id)->lockForUpdate()->first();
             foreach ($rows as $i => $line) {
-                $row = count($line) === count($headers) ? array_combine($headers, array_map(fn ($v) => trim((string) $v), $line)) : [];
+                $row = count($line) === count($headers) ? array_combine($headers, array_map(fn ($v) => self::fromSpreadsheet(trim((string) $v)), $line)) : [];
                 $sku = $row['sku'] ?? '';
                 try {
                     if (! $row || $sku === '' || isset($seen[$sku])) {
@@ -141,5 +141,11 @@ final class CatalogCsv
     public static function spreadsheetSafe(string $value): string
     {
         return preg_match('/^[\s]*[=+@\-\t\r]/u', $value) ? "'".$value : $value;
+    }
+
+    // Reverse spreadsheetSafe() so an exported catalog re-imports without gaining apostrophes.
+    public static function fromSpreadsheet(string $value): string
+    {
+        return preg_match('/^\'[\s]*[=+@\-\t\r]/u', $value) ? substr($value, 1) : $value;
     }
 }

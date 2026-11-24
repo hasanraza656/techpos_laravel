@@ -31,6 +31,16 @@ final class ReleaseCheck extends Command
             $health = true;
         } catch (\Throwable) {
         }
+        // Immutable-history triggers need this on binlog-enabled MySQL without SUPER (RDS, Cloud SQL).
+        $triggers = ['passed' => true, 'detail' => 'Not applicable for this connection.'];
+        if ($health && in_array($db['driver'] ?? null, ['mysql', 'mariadb'], true)) {
+            try {
+                $row = (array) DB::selectOne('SELECT @@log_bin AS log_bin, @@log_bin_trust_function_creators AS trust');
+                $triggers = ['passed' => ! (int) $row['log_bin'] || (int) $row['trust'], 'detail' => 'Binary logging requires log_bin_trust_function_creators=1 (or SUPER) for the immutable-history trigger migrations.'];
+            } catch (\Throwable) {
+                $triggers = ['passed' => false, 'detail' => 'Could not read log_bin settings; verify trigger creation privileges manually.'];
+            }
+        }
         $checks = [
             'framework' => ['passed' => $framework, 'detail' => 'Installed '.$version.'. Lifecycle/minimum patch matrix reviewed 2026-11-12; composer audit must also pass.'],
             'php_patch' => ['passed' => $php, 'detail' => 'Installed '.PHP_VERSION.'. Update the reviewed PHP security patch matrix before a later release.'],
@@ -42,6 +52,9 @@ final class ReleaseCheck extends Command
             'application_key' => ['passed' => str_starts_with($key, 'base64:') && strlen(base64_decode(substr($key, 7), true) ?: '') === 32, 'detail' => 'Retain and securely back up the application encryption key.'],
             'database' => ['passed' => $connection === 'mysql' && $health && ! empty($db['password']), 'detail' => 'Reachable MySQL-compatible database with a configured password; grants still require manual review.'],
             'queued_jobs' => ['passed' => in_array(config('queue.default'), ['database', 'redis'], true), 'detail' => 'Durable job backend; worker/scheduler operation is a separate gate.'],
+            'database_triggers' => $triggers,
+            'trusted_proxies' => ['passed' => trim((string) config('app.trusted_proxies')) !== '' || ! app()->environment('production'), 'detail' => 'Set TRUSTED_PROXIES to the load balancer/reverse proxy addresses so rate limits and audit IPs see real clients (with no proxy, set it to this server address to confirm the review).'],
+            'frontend_assets' => ['passed' => is_file(public_path('build/manifest.json')), 'detail' => 'Run npm ci && npm run build inside the Laravel app; marketing pages fail without the Vite manifest.'],
             'mail_delivery' => ['passed' => ! in_array(config('mail.default'), ['log', 'array', null], true), 'detail' => 'Configured delivery transport, followed by an actual delivery/consent test.'],
         ];
         $manual = ['functional_acceptance', 'independent_security_review', 'full_dependency_audit', 'backup_restore_drill', 'workers_scheduler_monitoring', 'accessibility_device_load_tests', 'legal_privacy_support', 'tax_hardware_approval_as_applicable'];

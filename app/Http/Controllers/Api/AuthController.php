@@ -45,7 +45,9 @@ class AuthController extends Controller
         $data = $r->validate(['email' => ['required', 'email', 'not_regex:/[\r\n]/'], 'password' => 'required|string', 'remember' => 'sometimes|boolean']);
         abort_if(Auth::guard('web')->check(), 422, 'Sign out before signing in with another account.');
         $user = User::where('email', strtolower($data['email']))->first();
-        if (! $user || ($user->status ?? 'active') !== 'active' || ! Hash::check($data['password'], $user->password)) {
+        // Always run one hash check so response timing does not reveal whether the email is registered.
+        $passwordOk = Hash::check($data['password'], $user?->password ?? '$2y$12$hE5PjhkyQJ7bi5h/vYQPOOhcLtmfvwI1G0jCwVK.sX7I9OYTQTPgO');
+        if (! $user || ! $passwordOk || ($user->status ?? 'active') !== 'active') {
             Audit::record('auth.login_failed', null, null, ['email_hash' => hash('sha256', strtolower($data['email']))]);
             throw ValidationException::withMessages(['email' => 'These credentials do not match our records.']);
         }

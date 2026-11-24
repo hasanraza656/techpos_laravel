@@ -17,7 +17,8 @@ class TenantController extends Controller
 {
     public function show(TenantContext $c, Entitlements $e)
     {
-        return ['tenant' => $c->tenant, 'logo' => TenantMedia::present(DB::table('tenant_media')->where('tenant_id', $c->tenant->id)->where('slot', 'logo')->first()), 'permissions' => DB::table('permissions')->pluck('key')->filter(fn ($p) => $c->allows($p))->values(),
+        return ['tenant' => $c->tenant, 'logo' => TenantMedia::present(DB::table('tenant_media')->where('tenant_id', $c->tenant->id)->where('slot', 'logo')->first()), // One query instead of one allows() call per permission; same tenant-wide (branch_id NULL) semantics as TenantContext::allows().
+            'permissions' => DB::table('permissions')->when(! $c->owner, fn ($q) => $q->whereIn('id', DB::table('user_role_assignments as a')->join('role_permissions as rp', 'rp.role_id', '=', 'a.role_id')->where('a.tenant_id', $c->tenant->id)->where('a.user_id', $c->user->id)->whereNull('a.branch_id')->select('rp.permission_id')))->orderBy('id')->pluck('key'),
             'subscription' => $e->subscription($c->tenant->id), 'plan' => $e->plan($c->tenant->id),
             'currency_locked' => DB::table('inventory_movements')->where('tenant_id', $c->tenant->id)->exists() || DB::table('sales')->where('tenant_id', $c->tenant->id)->exists() || DB::table('register_shifts')->where('tenant_id', $c->tenant->id)->exists(),
             'branches' => DB::table('branches')->where('tenant_id', $c->tenant->id)->whereNull('deleted_at')->select('public_id', 'name', 'address')->get(),

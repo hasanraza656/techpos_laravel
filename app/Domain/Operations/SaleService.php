@@ -150,6 +150,12 @@ final class SaleService
 
                 return $this->document($c, $old->public_id, true);
             }
+            // A concurrent sale took this device sequence after our pre-check: same 409 as that check,
+            // so sync reports this record for attention instead of failing the whole batch.
+            if (isset($data['device_identifier'], $data['local_sequence']) && DB::table('sales')->where('tenant_id', $c->tenant->id)->where('cashier_id', $c->user->id)
+                ->where('device_identifier', $data['device_identifier'])->where('local_sequence', $data['local_sequence'])->exists()) {
+                abort(409, 'Device sequence already belongs to a different sale.');
+            }
             throw $e;
         }
     }

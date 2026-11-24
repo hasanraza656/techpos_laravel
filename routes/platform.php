@@ -27,5 +27,11 @@ $routes = [
     ['get', 'leads', Read::class, 'leads', 'leads.view'], ['put', 'leads/{lead}', Manage::class, 'lead', 'leads.manage'], ['get', 'audit', Read::class, 'audit', 'audit.view'],
 ];
 foreach ($routes as [$method,$uri,$class,$action,$permission]) {
-    Route::$method($uri, [$class, $action])->middleware('platform.permission:'.$permission);
+    $route = Route::$method($uri, [$class, $action])->middleware('platform.permission:'.$permission);
+    // Integer-typed controller parameters: reject non-numeric ids with 404 instead of a TypeError 500.
+    foreach (['method', 'lead'] as $param) {
+        if (str_contains($uri, '{'.$param.'}')) {
+            $route->whereNumber($param);
+        }
+    }
 }

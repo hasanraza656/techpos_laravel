@@ -77,8 +77,12 @@ class DatabaseSeeder extends Seeder
         foreach (['product' => 'Product', 'customer' => 'Customer', 'sale' => 'Sale', 'cashier' => 'Cashier', 'stock' => 'Stock', 'dashboard' => 'Dashboard', 'settings' => 'Settings', 'subscription' => 'Subscription', 'save' => 'Save changes', 'cancel' => 'Cancel'] as $key => $value) {
             $this->defaults('label_translations', ['key' => $key, 'locale' => 'en'], ['section' => in_array($key, ['save', 'cancel']) ? 'actions' : 'navigation', 'value' => $value, 'review_status' => 'reviewed', 'created_at' => now(), 'updated_at' => now()]);
         }
-        foreach ([['bank', 'Bank Transfer', ['bank' => 'Meezan Bank', 'account_number' => '02470106959561', 'account_holder' => 'HASSAN RAZA']], ['jazzcash', 'JazzCash', ['account_number' => '03403877126']], ['easypaisa', 'Easypaisa', ['account_number' => '03156298337']]] as [$key,$name,$details]) {
-            $this->defaults('payment_methods', ['key' => $key], ['name' => $name, 'details' => json_encode($details), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        // Account details come from .env (config/services.php); a method without an account number is
+        // seeded inactive so tenants never see empty instructions until an admin completes it.
+        foreach (['bank' => 'Bank Transfer', 'jazzcash' => 'JazzCash', 'easypaisa' => 'Easypaisa'] as $key => $name) {
+            $details = array_map(fn ($v) => (string) $v, config("services.payment_instructions.$key", []));
+            $configured = trim($details['account_number'] ?? '') !== '';
+            $this->defaults('payment_methods', ['key' => $key], ['name' => $name, 'details' => json_encode($details), 'active' => $configured, 'created_at' => now(), 'updated_at' => now()]);
         }
     }
 }

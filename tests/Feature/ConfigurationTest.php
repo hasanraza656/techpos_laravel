@@ -75,4 +75,22 @@ class ConfigurationTest extends TestCase
         $this->assertTrue($context->allows('products.view', DB::table('branches')->value('id')));
         $this->assertFalse($context->allows('products.view'));
     }
+
+    public function test_role_member_and_label_listings_keep_their_shape(): void
+    {
+        $staff = User::factory()->create();
+        DB::table('tenant_users')->insert(['tenant_id' => $this->tenant->id, 'user_id' => $staff->id]);
+        $cashier = DB::table('roles')->where('tenant_id', $this->tenant->id)->where('name', 'Cashier')->first();
+        $branch = DB::table('branches')->where('tenant_id', $this->tenant->id)->first();
+        DB::table('user_role_assignments')->insert(['tenant_id' => $this->tenant->id, 'user_id' => $staff->id, 'role_id' => $cashier->id, 'branch_id' => $branch->id]);
+        $roles = collect($this->getJson('/api/v1/roles')->assertOk()->json('roles'))->keyBy('name');
+        $this->assertEqualsCanonicalizing(['products.view', 'sales.create', 'sales.view', 'register.open_drawer'], $roles['Cashier']['permissions']);
+        $this->assertArrayNotHasKey('id', $roles['Cashier']);
+        $member = collect($this->getJson('/api/v1/members')->assertOk()->json())->firstWhere('public_id', $staff->public_id);
+        $this->assertSame([['role' => $cashier->public_id, 'role_name' => 'Cashier', 'branch' => $branch->public_id, 'branch_name' => $branch->name]], $member['assignments']);
+        $this->assertArrayNotHasKey('id', $member);
+        // Default-locale override applies when the requested locale has none; unreviewed locales fall back to English.
+        $this->putJson('/api/v1/labels', ['locale' => 'en', 'labels' => ['product' => 'Item']])->assertOk();
+        $this->getJson('/api/v1/labels?locale=ur')->assertOk()->assertJsonFragment(['key' => 'product', 'value' => 'Item', 'override' => null])->assertJsonFragment(['key' => 'sale', 'value' => DB::table('label_translations')->where('key', 'sale')->where('locale', 'en')->value('value')]);
+    }
 }

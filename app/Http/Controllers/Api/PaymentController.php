@@ -26,9 +26,13 @@ class PaymentController extends Controller
     {
         $c->authorize('subscriptions.view');
 
-        return SubscriptionPayment::where('tenant_id', $c->tenant->id)->latest()->limit(50)->get()->map(function ($p) {
-            $p->setAttribute('events', DB::table('payment_events')->where('subscription_payment_id', $p->id)->orderBy('id')->get());
-            $p->setAttribute('has_proof', DB::table('payment_proofs')->where('subscription_payment_id', $p->id)->exists());
+        $payments = SubscriptionPayment::where('tenant_id', $c->tenant->id)->latest()->limit(50)->get();
+        $events = DB::table('payment_events')->whereIn('subscription_payment_id', $payments->pluck('id'))->orderBy('id')->get()->groupBy('subscription_payment_id');
+        $proofs = DB::table('payment_proofs')->whereIn('subscription_payment_id', $payments->pluck('id'))->pluck('subscription_payment_id')->flip();
+
+        return $payments->map(function ($p) use ($events, $proofs) {
+            $p->setAttribute('events', ($events->get($p->id) ?? collect())->values());
+            $p->setAttribute('has_proof', $proofs->has($p->id));
 
             return $p;
         });
@@ -44,7 +48,7 @@ class PaymentController extends Controller
 
         return DB::transaction(function () use ($c, $plan, $data, $service, $r) {
             DB::table('tenants')->where('id', $c->tenant->id)->lockForUpdate()->first();
-            abort_if(SubscriptionPayment::where('tenant_id', $c->tenant->id)->whereIn('status', ['draft', 'pending_review', 'needs_information'])->where('expires_at', '>', now())->exists(), 422, 'You already have an open payment request.');
+            abort_if(SubscriptionPayment::where('tenant_id', $c->tenant->id)->where(fn ($q) => $q->where('status', 'pending_review')->orWhere(fn ($o) => $o->whereIn('status', ['draft', 'needs_information'])->where('expires_at', '>', now())))->exists(), 422, 'You already have an open payment request.');
             $p = SubscriptionPayment::create(['tenant_id' => $c->tenant->id, 'plan_id' => $plan->id, 'payment_method_id' => $data['payment_method_id'], 'submitted_by' => $r->user()->id, 'amount' => $plan->prices()->where('currency', 'PKR')->where('interval', 'month')->firstOrFail()->amount, 'expires_at' => now()->addDays(7)]);
             $service->event($p, 'draft');
             app(\App\Domain\Platform\BillingInvoices::class)->forPayment($p);
@@ -65,19 +69,24 @@ class PaymentController extends Controller
     {
         $p = $this->owned($payment, $c);
         $r->validate(['proof' => 'required|file|mimes:png,jpg,jpeg,webp|max:5120']);
-        DB::transaction(function () use ($p, $r, $service, $storage) {
-            $locked = SubscriptionPayment::whereKey($p->id)->lockForUpdate()->firstOrFail();
-            $service->assertEditable($locked);
-            $storage->store($locked, $r->file('proof'));
-            Audit::record('payment.proof_uploaded', $p->tenant_id, $p->public_id);
-        });
+        try {
+            DB::transaction(function () use ($p, $r, $service, $storage) {
+                $locked = SubscriptionPayment::whereKey($p->id)->lockForUpdate()->firstOrFail();
+                $service->assertEditable($locked);
+                $storage->store($locked, $r->file('proof'));
+                Audit::record('payment.proof_uploaded', $p->tenant_id, $p->public_id);
+            });
+        } catch (\Throwable $e) {
+            $storage->discardUncommitted();
+            throw $e;
+        }
 
         return ['message' => 'Screenshot uploaded. Submit the payment for review when ready.'];
     }
 
     public function submit(Request $r, string $payment, TenantContext $c, PaymentService $service)
     {
-        $data = $r->validate(['transaction_reference' => 'required|string|min:4|max:100', 'paid_on' => 'required|date|before_or_equal:today|after_or_equal:'.now()->subDays(30)->toDateString(), 'amount' => 'required|numeric|min:0.01|max:999999999']);
+        $data = $r->validate(['transaction_reference' => 'required|string|min:4|max:100', 'paid_on' => 'required|date|before_or_equal:today|after_or_equal:'.now()->subDays(30)->toDateString(), 'amount' => ['required', 'numeric', 'min:0.01', 'max:999999999', 'regex:/^\d{1,9}(?:\.\d{1,2})?$/']]);
 
         return $service->submit($this->owned($payment, $c), $data);
     }

@@ -15,6 +15,8 @@ class SecurityReadinessTest extends TestCase
 
     public function test_security_headers_nonce_and_private_api_responses(): void
     {
+        // The marketing layout's own JSON-LD script carries the nonce; Vite assets are not built in CI.
+        $this->withoutVite();
         $first = $this->get('/')->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff')->assertHeader('X-Frame-Options', 'SAMEORIGIN')->assertHeader('Referrer-Policy', 'no-referrer');
         $csp = $first->headers->get('Content-Security-Policy');
         preg_match("/nonce-([^']+)/", $csp, $nonce);
@@ -31,6 +33,18 @@ class SecurityReadinessTest extends TestCase
         $this->get('/health')->assertHeaderMissing('Strict-Transport-Security');
         $this->app['env'] = 'production';
         $this->get('https://example.test/health')->assertHeader('Strict-Transport-Security', 'max-age=31536000');
+    }
+
+    public function test_forwarded_client_ip_is_only_trusted_from_configured_proxies(): void
+    {
+        \Illuminate\Support\Facades\Route::get('/_test/client-ip', fn (\Illuminate\Http\Request $r) => $r->ip());
+        $viaProxy = fn () => $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.5'])->withHeader('X-Forwarded-For', '203.0.113.9')->get('/_test/client-ip')->getContent();
+
+        $this->assertSame('10.0.0.5', $viaProxy(), 'Forwarded headers must be ignored when no proxy is configured.');
+        config(['app.trusted_proxies' => '10.0.0.0/8, 192.168.1.1']);
+        $this->assertSame('203.0.113.9', $viaProxy());
+        config(['app.trusted_proxies' => '192.168.1.1']);
+        $this->assertSame('10.0.0.5', $viaProxy(), 'An untrusted peer cannot spoof its client IP.');
     }
 
     public function test_release_check_reports_blockers_without_secrets(): void

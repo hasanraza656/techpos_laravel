@@ -118,6 +118,20 @@ class OperationalCoreTest extends TestCase
         $this->postJson('/api/v1/operations/products', ['name' => 'Other', 'sku' => 'OTHER', 'type' => 'service', 'unit' => 'hour', 'cost_price' => '0.0000', 'selling_price' => '100.00', 'tax_rate' => '0.0000', 'tax_inclusive' => false, 'reorder_level' => '0.000', 'active' => true, 'barcodes' => []])->assertUnprocessable()->assertJsonValidationErrors('limit');
     }
 
+    public function test_held_carts_validate_quantities_and_are_bounded(): void
+    {
+        $p = $this->product();
+        $hold = fn (array $line) => $this->postJson('/api/v1/operations/held-sales', ['branch' => $this->branch, 'name' => 'Table 4', 'payload' => ['lines' => [['product' => $p] + $line]]]);
+        $hold(['quantity' => '2.000'])->assertCreated();
+        $hold(['quantity' => '0.000'])->assertUnprocessable()->assertJsonValidationErrors('quantity');
+        $hold(['quantity' => '-1.000'])->assertUnprocessable();
+        $hold(['quantity' => '1.000', 'discount' => '-5.00'])->assertUnprocessable();
+        $branchId = DB::table('branches')->where('public_id', $this->branch)->value('id');
+        DB::table('held_sales')->insert(array_map(fn ($i) => ['tenant_id' => $this->tenant->id, 'branch_id' => $branchId, 'user_id' => $this->owner->id, 'public_id' => (string) Str::uuid(), 'name' => "Cart $i", 'payload' => '{"lines":[]}', 'created_at' => now(), 'updated_at' => now()], range(1, 99)));
+        $hold(['quantity' => '1.000'])->assertUnprocessable();
+        $this->assertSame(100, count($this->getJson('/api/v1/operations/held-sales?branch='.$this->branch)->assertOk()->json()));
+    }
+
     public function test_tenant_branch_permissions_and_cost_redaction(): void
     {
         $p = $this->product();
@@ -126,12 +140,26 @@ class OperationalCoreTest extends TestCase
         DB::table('tenant_users')->insert(['tenant_id' => $this->tenant->id, 'user_id' => $staff->id]);
         $role = DB::table('roles')->where('tenant_id', $this->tenant->id)->where('name', 'Cashier')->first();
         DB::table('user_role_assignments')->insert(['tenant_id' => $this->tenant->id, 'user_id' => $staff->id, 'role_id' => $role->id, 'branch_id' => DB::table('branches')->where('public_id', $this->branch)->value('id')]);
+        $all = DB::table('permissions')->count();
+        $this->assertCount($all, $this->getJson('/api/v1/operations/bootstrap')->assertOk()->json('branches.0.permissions'));
         $this->app['auth']->forgetGuards();
-        $this->actingAs($staff, 'web')->getJson('/api/v1/operations/products?'.http_build_query(['branch' => $this->branch, 'warehouse' => $this->warehouse]))->assertOk()->assertJsonMissingPath('data.0.cost_price');
+        $boot = $this->actingAs($staff, 'web')->getJson('/api/v1/operations/bootstrap')->assertOk();
+        $this->assertEqualsCanonicalizing(['products.view', 'sales.create', 'sales.view', 'register.open_drawer'], $boot->json('branches.0.permissions'));
+        $this->assertCount(1, $boot->json('branches'));
+        $this->getJson('/api/v1/operations/products?'.http_build_query(['branch' => $this->branch, 'warehouse' => $this->warehouse]))->assertOk()->assertJsonMissingPath('data.0.cost_price');
         $this->postJson('/api/v1/operations/inventory/adjustments', ['branch' => $this->branch, 'warehouse' => $this->warehouse, 'product' => $p, 'quantity' => '1.000', 'unit_cost' => '1.0000', 'type' => 'opening_stock', 'reason' => 'Denied edit', 'idempotency_key' => (string) Str::uuid()])->assertForbidden();
         $other = app(TenantService::class)->create(User::factory()->create(), 'Other');
         $foreign = DB::table('warehouses')->where('tenant_id', $other->id)->value('public_id');
         $this->getJson('/api/v1/operations/products?'.http_build_query(['branch' => $this->branch, 'warehouse' => $foreign]))->assertNotFound();
+        // A branch-scoped role can open the shared products it already lists, without cost or edit rights.
+        $this->getJson("/api/v1/operations/products/$p")->assertOk()->assertJsonMissingPath('cost_price');
+        $this->getJson('/api/v1/operations/categories')->assertOk();
+        $this->putJson("/api/v1/operations/products/$p", ['name' => 'Renamed', 'sku' => 'SKU1', 'type' => 'standard', 'unit' => 'piece', 'selling_price' => '1.00', 'tax_rate' => '0.0000', 'tax_inclusive' => false, 'reorder_level' => '0.000', 'active' => true, 'version' => 1, 'barcodes' => []])->assertForbidden();
+        // Users with no catalog grant anywhere stay denied.
+        $outsider = User::factory()->create();
+        DB::table('tenant_users')->insert(['tenant_id' => $this->tenant->id, 'user_id' => $outsider->id]);
+        $this->app['auth']->forgetGuards();
+        $this->actingAs($outsider, 'web')->getJson("/api/v1/operations/products/$p")->assertForbidden();
     }
 
     public function test_history_is_database_immutable_and_cash_events_are_idempotent(): void
@@ -164,6 +192,14 @@ class OperationalCoreTest extends TestCase
         $this->assertSame('0.30', $calc['subtotal']);
         $this->assertSame('0.32', $calc['total']);
         $this->assertSame('0.01', Decimal::sum(array_column($calc['lines'], 'cart_discount')));
+        // A free (fully line-discounted) last item must not receive a truncation remainder.
+        $line = fn ($price, $discount = '0') => ['quantity' => '1.000', 'unit_price' => $price, 'discount' => $discount, 'tax_rate' => '10.0000', 'tax_inclusive' => false];
+        $calc = app(SaleCalculator::class)->calculate([$line('1.00'), $line('2.00'), $line('5.00', '5.00')], '1.00');
+        $this->assertSame('1.00', Decimal::sum(array_column($calc['lines'], 'cart_discount')));
+        $this->assertSame('2.20', $calc['total']);
+        foreach ($calc['lines'] as $l) {
+            $this->assertGreaterThanOrEqual(0, bccomp($l['total'], '0', 2));
+        }
     }
 
     public function test_offline_sync_survives_retries_sequence_conflicts_and_device_revocation(): void

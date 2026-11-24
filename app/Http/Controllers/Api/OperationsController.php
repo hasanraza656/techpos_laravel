@@ -26,10 +26,19 @@ class OperationsController extends Controller
 {
     public function bootstrap(TenantContext $c, RegisterService $register)
     {
-        $branches = DB::table('branches')->where('tenant_id', $c->tenant->id)->whereNull('deleted_at')->get()->filter(fn ($b) => $c->allows('products.view', $b->id) || $c->allows('sales.create', $b->id) || $c->allows('reports.view', $b->id) || $c->allows('inventory.view', $b->id))->values();
-        $ids = $branches->pluck('id');
         $permissions = DB::table('permissions')->pluck('key');
-        $data = $branches->map(fn ($b) => ['public_id' => $b->public_id, 'name' => $b->name, 'permissions' => $permissions->filter(fn ($key) => $c->allows($key, $b->id))->values()]);
+        // Load the member's grants once (same semantics as TenantContext::allows) instead of
+        // one query per branch x permission.
+        $grants = $c->owner ? collect() : DB::table('user_role_assignments as a')->join('role_permissions as rp', 'rp.role_id', '=', 'a.role_id')->join('permissions as p', 'p.id', '=', 'rp.permission_id')
+            ->where('a.tenant_id', $c->tenant->id)->where('a.user_id', $c->user->id)->select('a.branch_id', 'p.key')->get();
+        $allowed = fn (int $branchId) => $c->owner ? $permissions : $grants->filter(fn ($g) => $g->branch_id === null || (int) $g->branch_id === $branchId)->pluck('key')->unique();
+        $branches = DB::table('branches')->where('tenant_id', $c->tenant->id)->whereNull('deleted_at')->get()->map(function ($b) use ($allowed) {
+            $b->granted = $allowed($b->id);
+
+            return $b;
+        })->filter(fn ($b) => $b->granted->intersect(['products.view', 'sales.create', 'reports.view', 'inventory.view'])->isNotEmpty())->values();
+        $ids = $branches->pluck('id');
+        $data = $branches->map(fn ($b) => ['public_id' => $b->public_id, 'name' => $b->name, 'permissions' => $permissions->filter(fn ($key) => $b->granted->contains($key))->values()]);
         $map = $branches->keyBy('id');
         $warehouses = DB::table('warehouses')->where('tenant_id', $c->tenant->id)->whereIn('branch_id', $ids)->get()->map(fn ($w) => ['public_id' => $w->public_id, 'name' => $w->name, 'branch' => $map[$w->branch_id]->public_id]);
         $registers = DB::table('registers')->where('tenant_id', $c->tenant->id)->whereIn('branch_id', $ids)->where('active', true)->get()->map(fn ($r) => ['public_id' => $r->public_id, 'name' => $r->name, 'branch' => $map[$r->branch_id]->public_id]);
@@ -189,13 +198,19 @@ class OperationsController extends Controller
     {
         $d = $r->validate(['branch' => 'required|uuid', 'name' => 'required|string|max:100', 'payload' => 'required|array:lines,customer,cart_discount', 'payload.lines' => 'required|array|min:1|max:200', 'payload.lines.*' => 'array:product,quantity,discount', 'payload.lines.*.product' => 'required|uuid|distinct', 'payload.lines.*.quantity' => 'required|string', 'payload.lines.*.discount' => 'sometimes|string', 'payload.customer' => 'nullable|uuid', 'payload.cart_discount' => 'sometimes|string']);
         $b = $scope->branch($d['branch'], 'sales.create');
+        app(Entitlements::class)->authorize($c->tenant->id, 'pos');
         foreach ($d['payload']['lines'] as $l) {
-            Decimal::input($l['quantity'], 3);
-            Decimal::input($l['discount'] ?? '0');
+            if (bccomp(Decimal::input($l['quantity'], 3), '0', 3) <= 0) {
+                Decimal::fail('quantity', 'Held quantities must be positive.');
+            }
+            Decimal::input($l['discount'] ?? '0'); // unsigned decimal; negatives are rejected
             abort_unless(DB::table('products')->where('tenant_id', $c->tenant->id)->where('public_id', $l['product'])->exists(), 422, 'A held product does not belong to this business.');
         }if (! empty($d['payload']['customer'])) {
             abort_unless(DB::table('customers')->where('tenant_id', $c->tenant->id)->where('public_id', $d['payload']['customer'])->whereNull('deleted_at')->exists(), 422);
-        }$uuid = (string) Str::uuid();
+        }
+        // The held list returns at most 100 carts; refuse more instead of silently hiding older ones.
+        abort_if(DB::table('held_sales')->where('tenant_id', $c->tenant->id)->where('branch_id', $b->id)->where('user_id', $c->user->id)->count() >= 100, 422, 'You have 100 held carts. Resume or discard some before holding another.');
+        $uuid = (string) Str::uuid();
         DB::table('held_sales')->insert(['tenant_id' => $c->tenant->id, 'branch_id' => $b->id, 'user_id' => $c->user->id, 'public_id' => $uuid, 'name' => $d['name'], 'payload' => json_encode($d['payload']), 'created_at' => now(), 'updated_at' => now()]);
 
         return response()->json(['public_id' => $uuid], 201);

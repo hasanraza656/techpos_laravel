@@ -10,6 +10,9 @@ use Illuminate\Support\ServiceProvider;
 return [
     'frontend_url' => env('FRONTEND_URL', 'http://127.0.0.1:5173'),
 
+    // Comma-separated proxy IPs/CIDRs (or "*") used by App\Http\Middleware\TrustProxies.
+    'trusted_proxies' => env('TRUSTED_PROXIES'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Name

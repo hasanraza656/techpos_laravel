@@ -18,7 +18,7 @@ class ProductController extends Controller
 {
     public function show(string $product, TenantContext $c)
     {
-        $c->authorize('products.view');
+        abort_unless($c->allowsInAnyBranch('products.view'), 403, 'You do not have permission for this action.');
         $p = DB::table('products')->where('tenant_id', $c->tenant->id)->where('public_id', $product)->whereNull('deleted_at')->first();
         abort_unless($p, 404);
         $p->barcodes = DB::table('product_barcodes')->where('tenant_id', $c->tenant->id)->where('product_id', $p->id)->get(['barcode', 'quantity']);
@@ -90,7 +90,7 @@ class ProductController extends Controller
 
     public function categories(Request $r, TenantContext $c)
     {
-        $c->authorize('products.view');
+        abort_unless($c->allowsInAnyBranch('products.view'), 403, 'You do not have permission for this action.');
 
         return DB::table('product_categories')->where('tenant_id', $c->tenant->id)->orderBy('name')->select('public_id', 'name')->get();
     }

@@ -24,7 +24,7 @@ class RouteServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        RateLimiter::for('login', fn (Request $r) => [Limit::perMinute(20)->by($r->ip()), Limit::perMinute(5)->by(strtolower((string) $r->input('email')).'|'.$r->ip())]);
+        RateLimiter::for('login', fn (Request $r) => [Limit::perMinute(20)->by($r->ip()), Limit::perMinute(5)->by(strtolower(is_string($r->input('email')) ? $r->input('email') : '').'|'.$r->ip())]);
         RateLimiter::for('registration', fn (Request $r) => Limit::perHour(10)->by($r->ip()));
         RateLimiter::for('api', function (Request $request) {
             return $request->user() ? Limit::perMinute(180)->by('user:'.$request->user()->id) : Limit::perMinute(60)->by('ip:'.$request->ip());

@@ -19,8 +19,11 @@ class RoleController extends Controller
     {
         $c->authorize('roles.manage');
 
-        return ['permissions' => DB::table('permissions')->get(), 'templates' => RoleTemplates::all(), 'roles' => DB::table('roles')->where('tenant_id', $c->tenant->id)->get()->map(function ($r) {
-            $r->permissions = DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->where('role_id', $r->id)->pluck('key');
+        $grants = DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->join('roles', 'roles.id', '=', 'role_permissions.role_id')
+            ->where('roles.tenant_id', $c->tenant->id)->orderBy('permissions.id')->get(['role_permissions.role_id', 'permissions.key'])->groupBy('role_id');
+
+        return ['permissions' => DB::table('permissions')->get(), 'templates' => RoleTemplates::all(), 'roles' => DB::table('roles')->where('tenant_id', $c->tenant->id)->get()->map(function ($r) use ($grants) {
+            $r->permissions = ($grants[$r->id] ?? collect())->pluck('key')->values();
             unset($r->id,$r->tenant_id);
 
             return $r;
@@ -48,7 +51,7 @@ class RoleController extends Controller
             DB::table('tenants')->where('id', $c->tenant->id)->lockForUpdate()->first();
             $id = $existing?->id;
             if ($id && in_array('sales.create', $d['permissions'])) {
-                $cashierRoles = DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->where('permissions.key', 'sales.create')->where('role_id', '!=', $id)->pluck('role_id');
+                $cashierRoles = DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->join('roles', 'roles.id', '=', 'role_permissions.role_id')->where('roles.tenant_id', $c->tenant->id)->where('permissions.key', 'sales.create')->where('role_id', '!=', $id)->pluck('role_id');
                 $existingCashiers = DB::table('user_role_assignments')->where('tenant_id', $c->tenant->id)->whereIn('role_id', $cashierRoles)->pluck('user_id');
                 $roleMembers = DB::table('user_role_assignments')->where('tenant_id', $c->tenant->id)->where('role_id', $id)->pluck('user_id');
                 $pendingCashiers = DB::table('tenant_invitations')->where('tenant_id', $c->tenant->id)->where(function ($q) use ($cashierRoles, $id) {
@@ -76,8 +79,11 @@ class RoleController extends Controller
     {
         $c->authorize('employees.view');
 
-        return DB::table('tenant_users')->join('users', 'users.id', '=', 'tenant_users.user_id')->where('tenant_id', $c->tenant->id)->select('users.id', 'users.public_id', 'users.name', 'users.email', 'tenant_users.is_owner')->get()->map(function ($u) use ($c) {
-            $u->assignments = DB::table('user_role_assignments as a')->join('roles', 'roles.id', '=', 'a.role_id')->leftJoin('branches', 'branches.id', '=', 'a.branch_id')->where('a.tenant_id', $c->tenant->id)->where('a.user_id', $u->id)->select('roles.public_id as role', 'roles.name as role_name', 'branches.public_id as branch', 'branches.name as branch_name')->get();
+        $assignments = DB::table('user_role_assignments as a')->join('roles', 'roles.id', '=', 'a.role_id')->leftJoin('branches', 'branches.id', '=', 'a.branch_id')->where('a.tenant_id', $c->tenant->id)
+            ->select('a.user_id', 'roles.public_id as role', 'roles.name as role_name', 'branches.public_id as branch', 'branches.name as branch_name')->get()->groupBy('user_id');
+
+        return DB::table('tenant_users')->join('users', 'users.id', '=', 'tenant_users.user_id')->where('tenant_id', $c->tenant->id)->select('users.id', 'users.public_id', 'users.name', 'users.email', 'tenant_users.is_owner')->get()->map(function ($u) use ($assignments) {
+            $u->assignments = ($assignments[$u->id] ?? collect())->map(fn ($a) => collect($a)->except('user_id'))->values();
             unset($u->id);
 
             return $u;
@@ -92,7 +98,11 @@ class RoleController extends Controller
         $u = DB::table('tenant_users')->join('users', 'users.id', '=', 'tenant_users.user_id')->where('tenant_id', $c->tenant->id)->where('users.public_id', $d['user'])->select('users.id', 'tenant_users.is_owner')->first();
         abort_unless($u, 404);
         abort_if($u->is_owner, 422, 'Owner permissions cannot be replaced by role assignment.');
-        $role = DB::table('roles')->where('tenant_id', $c->tenant->id)->where('public_id', $d['role'])->first();
+        // Same rule as member removal: a manager cannot re-assign (demote) a member who holds permissions the manager lacks.
+        foreach (DB::table('user_role_assignments as a')->join('role_permissions as rp', 'rp.role_id', '=', 'a.role_id')->join('permissions as p', 'p.id', '=', 'rp.permission_id')->where('a.tenant_id', $c->tenant->id)->where('a.user_id', $u->id)->pluck('p.key') as $key) {
+            abort_unless($c->allows($key), 403, 'You cannot change the role of a more privileged member.');
+        }
+        $role =DB::table('roles')->where('tenant_id', $c->tenant->id)->where('public_id', $d['role'])->first();
         abort_unless($role, 404);
         foreach (DB::table('role_permissions')->join('permissions', 'permissions.id', '=', 'role_permissions.permission_id')->where('role_id', $role->id)->pluck('key') as $key) {
             abort_unless($c->allows($key), 403);

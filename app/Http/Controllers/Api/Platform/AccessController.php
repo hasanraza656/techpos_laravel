@@ -40,6 +40,7 @@ final class AccessController extends Controller
             }$old = $role ? DB::table('platform_roles')->where('public_id', $role)->lockForUpdate()->first() : null;
             if ($old) {
                 abort_if((int) $old->version !== (int) $d['version'], 409, 'This role changed. Reload its permissions.');
+                app(PlatformAccess::class)->assertCovers($r->user(), DB::table('platform_role_permissions')->where('role_id', $old->id)->pluck('permission')->all());
                 if (! $r->user()->is_superadmin && DB::table('platform_user_roles')->where('user_id', $r->user()->id)->where('role_id', $old->id)->exists()) {
                     abort_unless(in_array('access.manage', $d['permissions']), 422, 'Do not remove your own role-management access.');
                 }
@@ -81,6 +82,7 @@ final class AccessController extends Controller
             abort_unless($u, 404);
             abort_if($u->is_superadmin, 422, 'Root authority is explicit and is not changed by staff role assignment.');
             abort_if($u->id === $r->user()->id, 422, 'Another authorized administrator must change your staff assignments.');
+            app(PlatformAccess::class)->assertCovers($r->user(), app(PlatformAccess::class)->rolePermissions($u->id));
             $roles = DB::table('platform_roles')->whereIn('public_id', $d['roles'])->get();
             foreach (DB::table('platform_role_permissions')->whereIn('role_id', $roles->pluck('id'))->pluck('permission') as $p) {
                 app(PlatformAccess::class)->authorize($r->user(), $p);
@@ -166,9 +168,10 @@ final class AccessController extends Controller
         $t = $this->tenant($client);
         $d = $r->validate(['user' => 'required|uuid|exists:users,public_id', 'action' => 'required|in:assign,remove', 'role' => 'required_if:action,assign|nullable|uuid', 'branch' => 'nullable|uuid']);
 
-        return $cmd->run($r, 'client_access.manage', function () use ($t, $d) {
+        return $cmd->run($r, 'client_access.manage', function () use ($r, $t, $d) {
             DB::table('tenants')->where('id', $t->id)->lockForUpdate()->first();
             $u = DB::table('users')->where('public_id', $d['user'])->first();
+            abort_if($u->id === $r->user()->id, 422, 'Another authorized administrator must change your own client memberships.');
             $member = DB::table('tenant_users')->where('tenant_id', $t->id)->where('user_id', $u->id)->first();
             abort_if($member?->is_owner, 422, 'Owner authority cannot be removed or replaced through employee roles.');
             if ($d['action'] === 'remove') {

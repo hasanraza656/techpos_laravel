@@ -51,11 +51,13 @@ final class RegisterService
     {
         $s = DB::table('register_shifts')->where('tenant_id', $tenant)->where('id', $shift)->first();
         abort_unless($s, 404);
-        $cash = Decimal::sum(DB::table('sale_payments as p')->join('sales as s', 's.id', '=', 'p.sale_id')->where('s.tenant_id', $tenant)->where('s.shift_id', $shift)->where('p.method', 'cash')->select('p.amount')->cursor()->map(fn ($r) => (string) $r->amount));
-        $change = Decimal::sum(DB::table('sales')->where('tenant_id', $tenant)->where('shift_id', $shift)->select('change_due')->cursor()->map(fn ($r) => (string) $r->change_due));
-        $events = Decimal::sum(DB::table('cash_events')->where('tenant_id', $tenant)->where('shift_id', $shift)->select('amount')->cursor()->map(fn ($r) => (string) $r->amount));
+        // Filter on the full (tenant_id, branch_id, shift_id) / (tenant_id, sale_id) composite
+        // keys so these lookups use the FK indexes instead of scanning all tenant history.
+        $cash = Decimal::sum(DB::table('sale_payments as p')->join('sales as s', 's.id', '=', 'p.sale_id')->where('s.tenant_id', $tenant)->where('s.branch_id', $s->branch_id)->where('s.shift_id', $shift)->where('p.tenant_id', $tenant)->where('p.method', 'cash')->select('p.amount')->cursor()->map(fn ($r) => (string) $r->amount));
+        $change = Decimal::sum(DB::table('sales')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('change_due')->cursor()->map(fn ($r) => (string) $r->change_due));
+        $events = Decimal::sum(DB::table('cash_events')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('amount')->cursor()->map(fn ($r) => (string) $r->amount));
 
-        $refunds = Decimal::sum(DB::table('sale_returns')->where('tenant_id', $tenant)->where('shift_id', $shift)->select('total')->cursor()->map(fn ($r) => (string) $r->total));
+        $refunds = Decimal::sum(DB::table('sale_returns')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('total')->cursor()->map(fn ($r) => (string) $r->total));
 
         return bcsub(bcadd(bcadd($s->opening_float, bcsub((string) $cash, (string) $change, 2), 2), (string) $events, 2), $refunds, 2);
     }
@@ -88,7 +90,6 @@ final class RegisterService
             abort_unless($s, 404);
             $c->authorize('register.open_drawer', $s->branch_id);
             abort_unless($s->user_id === $c->user->id || $c->allows('register.close', $s->branch_id), 403);
-            abort_if($s->closed_at, 422, 'This shift is closed.');
             $amount = Decimal::input($data['amount']);
             if (bccomp($amount, '0', 2) <= 0) {
                 Decimal::fail('amount', 'Cash movement must be positive.');
@@ -99,6 +100,8 @@ final class RegisterService
 
                 return $old;
             }
+            // Checked after the replay lookup so a retried, already-recorded event is acknowledged.
+            abort_if($s->closed_at, 422, 'This shift is closed.');
             $id = DB::table('cash_events')->insertGetId(['public_id' => (string) Str::uuid(), 'tenant_id' => $c->tenant->id, 'branch_id' => $s->branch_id, 'shift_id' => $s->id, 'user_id' => $c->user->id, 'idempotency_key' => $data['idempotency_key'], 'type' => $data['type'], 'amount' => $signed, 'reason' => $data['reason'], 'created_at' => now()]);
             Audit::record('register.cash_event', $c->tenant->id, (string) $id, ['type' => $data['type'], 'amount' => $signed]);
 
