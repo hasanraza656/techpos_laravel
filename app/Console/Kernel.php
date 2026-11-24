@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         $schedule->command('techpos:expire-subscriptions')->hourly()->withoutOverlapping();
+        // Daily encrypted backup once a BACKUP_KEY is configured (see config/backup.php).
+        if (config('backup.key')) {
+            $schedule->command('techpos:backup')->dailyAt(config('backup.time', '02:00'))->withoutOverlapping(120);
+        }
         // $schedule->command('inspire')->hourly();
     }
 

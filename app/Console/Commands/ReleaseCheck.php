@@ -41,7 +41,15 @@ final class ReleaseCheck extends Command
                 $triggers = ['passed' => false, 'detail' => 'Could not read log_bin settings; verify trigger creation privileges manually.'];
             }
         }
+        $latestBackup = null;
+        try {
+            $latestBackup = app(\App\Domain\Backup\BackupService::class)->list()[0] ?? null;
+        } catch (\Throwable) {
+        }
+        $backupKey = (string) config('backup.key');
         $checks = [
+            'backups' => ['passed' => $backupKey !== '' && $backupKey !== $key && $latestBackup !== null && $latestBackup['modified'] > now()->subHours(26)->getTimestamp(),
+                'detail' => 'Set BACKUP_KEY (different from APP_KEY, stored off-server), keep the scheduler running and have a backup from the last 26 hours. Point BACKUP_DISK off-server and rehearse techpos:backup-restore.'],
             'framework' => ['passed' => $framework, 'detail' => 'Installed '.$version.'. Lifecycle/minimum patch matrix reviewed 2026-11-12; composer audit must also pass.'],
             'php_patch' => ['passed' => $php, 'detail' => 'Installed '.PHP_VERSION.'. Update the reviewed PHP security patch matrix before a later release.'],
             'production_environment' => ['passed' => app()->environment('production'), 'detail' => 'APP_ENV must be production.'],
