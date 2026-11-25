@@ -57,9 +57,12 @@ final class RegisterService
         $change = Decimal::sum(DB::table('sales')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('change_due')->cursor()->map(fn ($r) => (string) $r->change_due));
         $events = Decimal::sum(DB::table('cash_events')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('amount')->cursor()->map(fn ($r) => (string) $r->amount));
 
-        $refunds = Decimal::sum(DB::table('sale_returns')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('total')->cursor()->map(fn ($r) => (string) $r->total));
+        // Only the cash part of a return leaves the drawer; the khata part reduced the customer's balance.
+        $refunds = Decimal::sum(DB::table('sale_returns')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->select('total', 'credit_amount')->cursor()->map(fn ($r) => bcsub((string) $r->total, (string) $r->credit_amount, 2)));
+        // Cash khata collections taken into this shift's drawer (ledger amounts are negative).
+        $collections = bcsub('0', Decimal::sum(DB::table('customer_ledger')->where('tenant_id', $tenant)->where('branch_id', $s->branch_id)->where('shift_id', $shift)->where('type', 'payment')->where('method', 'cash')->select('amount')->cursor()->map(fn ($r) => (string) $r->amount)), 2);
 
-        return bcsub(bcadd(bcadd($s->opening_float, bcsub((string) $cash, (string) $change, 2), 2), (string) $events, 2), $refunds, 2);
+        return bcsub(bcadd(bcadd(bcadd($s->opening_float, bcsub((string) $cash, (string) $change, 2), 2), (string) $events, 2), $collections, 2), $refunds, 2);
     }
 
     public function close(TenantContext $c, string $uuid, array $data): object

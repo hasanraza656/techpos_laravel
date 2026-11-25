@@ -14,6 +14,7 @@ Route::prefix('operations')->group(function () {
     Route::get('products/{product}', [ProductController::class, 'show']);
     Route::get('categories', [ProductController::class, 'categories']);
     Route::get('customers', [CustomerController::class, 'index']);
+    Route::get('customers/{customer}/ledger', [CustomerController::class, 'ledger']);
     Route::get('inventory/movements', [OperationsController::class, 'stock']);
     Route::get('sales/{sale}', [OperationsController::class, 'document']);
     Route::get('sales', [OperationsController::class, 'sales']);
@@ -28,6 +29,8 @@ Route::prefix('operations')->group(function () {
         Route::post('categories', [ProductController::class, 'createCategory']);
         Route::post('customers', [CustomerController::class, 'save']);
         Route::put('customers/{customer}', [CustomerController::class, 'save']);
+        Route::post('customers/{customer}/payments', [CustomerController::class, 'payment']);
+        Route::post('customers/{customer}/ledger-adjustments', [CustomerController::class, 'adjustment']);
         Route::post('inventory/adjustments', [OperationsController::class, 'adjustment']);
         Route::post('shifts', [OperationsController::class, 'open']);
         Route::post('shifts/{shift}/close', [OperationsController::class, 'close']);

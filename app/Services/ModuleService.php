@@ -18,7 +18,7 @@ final class ModuleService
             $included = $states[$f->key]['included'];
             $enabled = $states[$f->key]['enabled'];
             $missing = array_values(array_filter($deps, fn ($d) => ! ($states[$d]['enabled'] ?? false)));
-            $ready = ['pos', 'inventory', 'customers', 'receipts', 'daily_summary', 'builtin_intelligence'];
+            $ready = ['pos', 'inventory', 'customers', 'receipts', 'daily_summary', 'builtin_intelligence', 'customer_credit'];
             $partial = ['offline_basic', 'reports', 'analytics', 'forecasting', 'returns', 'promotions', 'warehouses', 'advanced_permissions', 'bulk_data'];
             $availability = in_array($f->key, $ready, true) ? 'available' : (in_array($f->key, $partial, true) ? 'partial' : 'planned');
 

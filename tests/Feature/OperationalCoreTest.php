@@ -144,7 +144,7 @@ class OperationalCoreTest extends TestCase
         $this->assertCount($all, $this->getJson('/api/v1/operations/bootstrap')->assertOk()->json('branches.0.permissions'));
         $this->app['auth']->forgetGuards();
         $boot = $this->actingAs($staff, 'web')->getJson('/api/v1/operations/bootstrap')->assertOk();
-        $this->assertEqualsCanonicalizing(['products.view', 'sales.create', 'sales.view', 'register.open_drawer'], $boot->json('branches.0.permissions'));
+        $this->assertEqualsCanonicalizing(['products.view', 'sales.create', 'sales.view', 'register.open_drawer', 'customers.credit_sell', 'customers.collect'], $boot->json('branches.0.permissions'));
         $this->assertCount(1, $boot->json('branches'));
         $this->getJson('/api/v1/operations/products?'.http_build_query(['branch' => $this->branch, 'warehouse' => $this->warehouse]))->assertOk()->assertJsonMissingPath('data.0.cost_price');
         $this->postJson('/api/v1/operations/inventory/adjustments', ['branch' => $this->branch, 'warehouse' => $this->warehouse, 'product' => $p, 'quantity' => '1.000', 'unit_cost' => '1.0000', 'type' => 'opening_stock', 'reason' => 'Denied edit', 'idempotency_key' => (string) Str::uuid()])->assertForbidden();

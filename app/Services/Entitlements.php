@@ -39,7 +39,7 @@ final class Entitlements
         $features = DB::table('features')->get()->keyBy('key');
         $included = DB::table('feature_entitlements')->where('plan_id', $this->plan($tenantId)->id)->pluck('feature_id')->flip();
         $overrides = DB::table('tenant_feature_overrides')->where('tenant_id', $tenantId)->pluck('enabled', 'feature_id');
-        $core = ['pos', 'inventory', 'customers', 'receipts', 'offline_basic', 'daily_summary', 'builtin_intelligence'];
+        $core = ['pos', 'inventory', 'customers', 'receipts', 'offline_basic', 'daily_summary', 'builtin_intelligence', 'customer_credit'];
         $resolved = [];
         $visiting = [];
         $resolve = function (string $key) use (&$resolve, &$resolved, &$visiting, $features, $included, $overrides, $core): bool {

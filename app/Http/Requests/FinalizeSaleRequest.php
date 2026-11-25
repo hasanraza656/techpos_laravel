@@ -19,11 +19,12 @@ class FinalizeSaleRequest extends FormRequest
             'lines.*.quantity' => ['required', 'string', 'regex:/^\d{1,7}(?:\.\d{1,3})?$/'], 'lines.*.discount' => ['sometimes', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'],
             'lines.*.price_override' => ['sometimes', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'], 'lines.*.expected_unit_price' => ['sometimes', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'],
             'cart_discount' => ['sometimes', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'], 'expected_total' => ['sometimes', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'],
-            'payments' => 'required|array|min:1|max:10', 'payments.*' => 'required|array:method,amount,reference', 'payments.*.method' => 'required|in:cash,external_card,bank_transfer',
+            'payments' => 'required|array|min:1|max:10', 'payments.*' => 'required|array:method,amount,reference', 'payments.*.method' => 'required|in:cash,external_card,bank_transfer,credit',
             'payments.*.amount' => ['required', 'string', 'regex:/^\d{1,10}(?:\.\d{1,2})?$/'], 'payments.*.reference' => 'nullable|string|max:120', 'note' => 'nullable|string|max:1000',
             'channel' => 'sometimes|in:online,offline', 'device_identifier' => 'required_if:channel,offline|required_with:local_sequence|nullable|uuid', 'local_sequence' => 'required_if:channel,offline|required_with:device_identifier|nullable|integer|min:1|max:9007199254740991',
             'payload_version' => 'sometimes|integer|in:1', 'client_occurred_at' => 'required_if:channel,offline|nullable|date|before_or_equal:'.now()->addMinutes(5)->toIso8601String(),
             'cashier' => 'required_with:device_identifier|nullable|uuid',
+            'credit_override_reason' => 'nullable|string|min:5|max:500',
         ];
     }
 }

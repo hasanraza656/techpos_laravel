@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 final class SaleService
 {
-    public function __construct(private SaleCalculator $calculator, private StockLedger $stock) {}
+    public function __construct(private SaleCalculator $calculator, private StockLedger $stock, private CustomerCredit $credit) {}
 
     public function finalize(TenantContext $c, array $data): array
     {
@@ -36,9 +36,24 @@ final class SaleService
             return $v;
         };
         $hash = hash('sha256', json_encode($canonical($payload), JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION));
+        $creditTenders = array_values(array_filter($data['payments'], fn ($p) => $p['method'] === 'credit'));
+        if ($creditTenders) {
+            // Credit needs the live, locked customer balance; it can never be taken offline.
+            if (($data['channel'] ?? 'online') === 'offline') {
+                Decimal::fail('payments', 'Credit sales need a connection.');
+            }
+            if (count($creditTenders) > 1) {
+                Decimal::fail('payments', 'Use a single credit tender per sale.');
+            }
+            if (empty($data['customer'])) {
+                Decimal::fail('payments', 'Choose a customer for a credit sale.');
+            }
+            app(Entitlements::class)->authorize($c->tenant->id, 'customer_credit');
+            $c->authorize('customers.credit_sell', $branch->id);
+        }
 
         try {
-            return DB::transaction(function () use ($c, $data, $branch, $warehouse, $hash) {
+            return DB::transaction(function () use ($c, $data, $branch, $warehouse, $hash, $creditTenders) {
                 // Branch serialization is deliberately conservative for first correctness milestone.
                 DB::table('branches')->where('id', $branch->id)->lockForUpdate()->first();
                 $old = DB::table('sales')->where('tenant_id', $c->tenant->id)->where('idempotency_key', $data['idempotency_key'])->first();
@@ -63,6 +78,10 @@ final class SaleService
                 if (! empty($data['customer'])) {
                     $customer = DB::table('customers')->where('tenant_id', $c->tenant->id)->where('public_id', $data['customer'])->whereNull('deleted_at')->first();
                     abort_unless($customer, 404, 'Customer not found.');
+                    if ($creditTenders) {
+                        // Locked so concurrent credit sales and collections serialize on the balance.
+                        $customer = $this->credit->lock($c->tenant->id, $customer->id);
+                    }
                 }
                 $products = DB::table('products')->where('tenant_id', $c->tenant->id)->whereIn('public_id', array_column($data['lines'], 'product'))->where('active', true)->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get()->keyBy('public_id');
                 $lines = [];
@@ -96,6 +115,7 @@ final class SaleService
                 }
                 $paid = '0.00';
                 $cash = '0.00';
+                $credit = '0.00';
                 foreach ($data['payments'] as $payment) {
                     $amount = Decimal::input($payment['amount']);
                     $zeroCashSale = bccomp($calc['total'], '0', 2) === 0 && count($data['payments']) === 1 && $payment['method'] === 'cash';
@@ -104,6 +124,8 @@ final class SaleService
                     }$paid = bcadd($paid, $amount, 2);
                     if ($payment['method'] === 'cash') {
                         $cash = bcadd($cash, $amount, 2);
+                    } elseif ($payment['method'] === 'credit') {
+                        $credit = bcadd($credit, $amount, 2);
                     } elseif (empty($payment['reference'])) {
                         Decimal::fail('payments', 'External payments need a terminal/bank reference.');
                     }
@@ -116,6 +138,14 @@ final class SaleService
                 }
                 if (bccomp($paid, '999999999999.99', 2) > 0) {
                     Decimal::fail('payments', 'Tender amount exceeds the supported limit.');
+                }
+                $override = false;
+                if ($creditTenders) {
+                    // Credit only covers what other tenders leave unpaid, so it never produces change.
+                    if (bccomp($credit, bcsub($calc['total'], bcsub($paid, $credit, 2), 2), 2) > 0) {
+                        Decimal::fail('payments', 'Credit cannot exceed the amount left after other tenders, and gives no change.');
+                    }
+                    $override = $this->credit->assertChargeable($c, $customer, $branch->id, $credit, $data['credit_override_reason'] ?? null);
                 }
                 $uuid = $data['idempotency_key'];
                 $cost = '0.0000';
@@ -137,8 +167,18 @@ final class SaleService
                     DB::table('sale_lines')->insert($row + ['sale_id' => $id]);
                 }
                 foreach ($data['payments'] as $p) {
-                    DB::table('sale_payments')->insert(['tenant_id' => $c->tenant->id, 'sale_id' => $id, 'method' => $p['method'], 'amount' => Decimal::input($p['amount']), 'reference' => $p['reference'] ?? null, 'verification' => $p['method'] === 'cash' ? 'cash_received' : 'externally_recorded', 'created_at' => now()]);
-                }Audit::record('sale.finalized', $c->tenant->id, $uuid, ['total' => $calc['total'], 'branch' => $branch->public_id]);
+                    DB::table('sale_payments')->insert(['tenant_id' => $c->tenant->id, 'sale_id' => $id, 'method' => $p['method'], 'amount' => Decimal::input($p['amount']), 'reference' => $p['reference'] ?? null, 'verification' => match ($p['method']) {
+                        'cash' => 'cash_received', 'credit' => 'customer_credit', default => 'externally_recorded'
+                    }, 'created_at' => now()]);
+                }
+                if ($creditTenders) {
+                    $reason = $override ? trim($data['credit_override_reason']) : null;
+                    $entry = $this->credit->append($c, $customer, 'credit_sale', $credit, $uuid, $hash, ['branch_id' => $branch->id, 'shift_id' => $shift->id, 'sale_id' => $id, 'override_reason' => $reason]);
+                    if ($override) {
+                        Audit::record('customer.credit_override', $c->tenant->id, $customer->public_id, ['sale' => $uuid, 'amount' => $credit, 'balance_after' => CustomerCredit::money($entry->balance_after), 'credit_limit' => CustomerCredit::money($customer->credit_limit), 'reason' => $reason]);
+                    }
+                }
+                Audit::record('sale.finalized', $c->tenant->id, $uuid, ['total' => $calc['total'], 'branch' => $branch->public_id]);
 
                 return $this->document($c, $uuid, true);
             }, 3);
@@ -206,7 +246,15 @@ final class SaleService
         $data['branch_name'] = DB::table('branches')->where('id', $sale->branch_id)->value('name');
         // Receipt-facing customer; historical sales still show it if the customer was archived later.
         $customer = $sale->customer_id ? DB::table('customers')->where('tenant_id', $c->tenant->id)->where('id', $sale->customer_id)->first(['public_id', 'name', 'phone']) : null;
-        $data['customer'] = $customer ? ['public_id' => $customer->public_id, 'name' => $customer->name, 'phone' => $customer->phone] : null;
+        $data['customer'] = $customer ? ['public_id' => $customer->public_id, 'name' => $customer->name, 'phone' => $customer->phone, 'balance_before' => null, 'balance_after' => null] : null;
+        if ($customer) {
+            // Khata balance around this sale's credit tender (immutable ledger row, so stable on reprint).
+            $entry = DB::table('customer_ledger')->where('tenant_id', $c->tenant->id)->where('sale_id', $sale->id)->where('type', 'credit_sale')->first(['amount', 'balance_after']);
+            if ($entry) {
+                $data['customer']['balance_after'] = CustomerCredit::money($entry->balance_after);
+                $data['customer']['balance_before'] = bcsub(CustomerCredit::money($entry->balance_after), CustomerCredit::money($entry->amount), 2);
+            }
+        }
 
         return $data;
     }

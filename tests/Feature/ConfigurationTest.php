@@ -84,7 +84,7 @@ class ConfigurationTest extends TestCase
         $branch = DB::table('branches')->where('tenant_id', $this->tenant->id)->first();
         DB::table('user_role_assignments')->insert(['tenant_id' => $this->tenant->id, 'user_id' => $staff->id, 'role_id' => $cashier->id, 'branch_id' => $branch->id]);
         $roles = collect($this->getJson('/api/v1/roles')->assertOk()->json('roles'))->keyBy('name');
-        $this->assertEqualsCanonicalizing(['products.view', 'sales.create', 'sales.view', 'register.open_drawer'], $roles['Cashier']['permissions']);
+        $this->assertEqualsCanonicalizing(['products.view', 'sales.create', 'sales.view', 'register.open_drawer', 'customers.credit_sell', 'customers.collect'], $roles['Cashier']['permissions']);
         $this->assertArrayNotHasKey('id', $roles['Cashier']);
         $member = collect($this->getJson('/api/v1/members')->assertOk()->json())->firstWhere('public_id', $staff->public_id);
         $this->assertSame([['role' => $cashier->public_id, 'role_name' => 'Cashier', 'branch' => $branch->public_id, 'branch_name' => $branch->name]], $member['assignments']);

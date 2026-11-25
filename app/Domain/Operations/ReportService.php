@@ -48,20 +48,35 @@ final class ReportService
         $refundTax = '0.00';
         $reverse = '0.0000';
         $returnCount = 0;
+        $creditReturns = '0.00';
         foreach ($returns->cursor() as $r) {
             $returnCount++;
             $refund = bcadd($refund, (string) $r->total, 2);
+            $creditReturns = bcadd($creditReturns, (string) $r->credit_amount, 2);
             $refundTax = bcadd($refundTax, (string) $r->tax_total, 2);
             $reverse = bcadd($reverse, (string) $r->cost_reversed, 4);
         }
-        $payments = ['cash' => '0.00', 'external_card' => '0.00', 'bank_transfer' => '0.00'];
+        $payments = ['cash' => '0.00', 'external_card' => '0.00', 'bank_transfer' => '0.00', 'credit' => '0.00'];
         foreach (DB::table('sale_payments as p')->joinSub((clone $sales)->select('id'), 's', 's.id', '=', 'p.sale_id')->where('p.tenant_id', $c->tenant->id)->select('p.method', 'p.amount')->cursor() as $p) {
-            $payments[$p->method] = bcadd($payments[$p->method], (string) $p->amount, 2);
-        }$payments['cash'] = bcsub(bcsub($payments['cash'], $sums['change_due'], 2), $refund, 2);
+            $payments[$p->method] = bcadd($payments[$p->method] ?? '0.00', (string) $p->amount, 2);
+        }
+        $creditSales = $payments['credit'];
+        // Returns refund the khata first; only the remainder left the drawer as cash.
+        $payments['cash'] = bcsub(bcsub($payments['cash'], $sums['change_due'], 2), bcsub($refund, $creditReturns, 2), 2);
+        $payments['credit'] = bcsub($payments['credit'], $creditReturns, 2);
+        $collections = '0.00';
+        $collectionsCash = '0.00';
+        foreach (DB::table('customer_ledger')->where('tenant_id', $c->tenant->id)->where('branch_id', $branch->id)->where('type', 'payment')->where('created_at', '>=', $from)->where('created_at', '<', $until)->select('method', 'amount')->cursor() as $p) {
+            $amount = bcsub('0', (string) $p->amount, 2);
+            $collections = bcadd($collections, $amount, 2);
+            if ($p->method === 'cash') {
+                $collectionsCash = bcadd($collectionsCash, $amount, 2);
+            }
+        }
         $net = bcsub($sums['total'], $refund, 2);
         $tax = bcsub($sums['tax_total'], $refundTax, 2);
         $revenue = bcsub($net, $tax, 2);
-        $result = ['from_utc' => $from->toIso8601String(), 'until_utc' => $until->toIso8601String(), 'timezone' => $c->tenant->timezone, 'currency' => $c->tenant->currency, 'sales_count' => $count, 'returns_count' => $returnCount, 'gross_receipts' => $sums['total'], 'cash_refunds' => $refund, 'net_receipts' => $net, 'tax_net' => $tax, 'revenue_ex_tax' => $revenue, 'sale_discounts' => bcadd($sums['line_discount'], $sums['cart_discount'], 2), 'payments_net' => $payments, 'note' => 'Sales and return events are attributed to their own posting date. Profit uses recorded weighted-average sale cost, reversed only for restocked goods; it excludes business expenses and is not a full profit-and-loss statement.'];
+        $result = ['from_utc' => $from->toIso8601String(), 'until_utc' => $until->toIso8601String(), 'timezone' => $c->tenant->timezone, 'currency' => $c->tenant->currency, 'sales_count' => $count, 'returns_count' => $returnCount, 'gross_receipts' => $sums['total'], 'cash_refunds' => $refund, 'net_receipts' => $net, 'tax_net' => $tax, 'revenue_ex_tax' => $revenue, 'sale_discounts' => bcadd($sums['line_discount'], $sums['cart_discount'], 2), 'payments_net' => $payments, 'credit_sales' => $creditSales, 'credit_returns' => $creditReturns, 'credit_collections' => $collections, 'credit_collections_cash' => $collectionsCash, 'note' => 'Sales and return events are attributed to their own posting date. Profit uses recorded weighted-average sale cost, reversed only for restocked goods; it excludes business expenses and is not a full profit-and-loss statement.'];
         if ($c->allows('reports.view_profit', $branch->id)) {
             $cost = bcsub($sums['cost_total'], $reverse, 4);
             $result['cost_of_goods_sold'] = $cost;

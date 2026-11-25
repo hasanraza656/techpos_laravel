@@ -26,11 +26,17 @@ final class ReturnService
                 return $this->document($c, $old->public_id);
             }
             DB::table('sales')->where('id', $sale->id)->lockForUpdate()->first();
-            abort_if(DB::table('sale_payments')->where('tenant_id', $c->tenant->id)->where('sale_id', $sale->id)->where('method', '!=', 'cash')->exists(), 422, 'This workflow supports cash-only source sales. Externally recorded and split-method refunds require a separate reconciliation workflow.');
+            abort_if(DB::table('sale_payments')->where('tenant_id', $c->tenant->id)->where('sale_id', $sale->id)->whereNotIn('method', ['cash', 'credit'])->exists(), 422, 'This workflow supports cash and customer-credit source sales. Externally recorded and card/bank refunds require a separate reconciliation workflow.');
             $shift = DB::table('register_shifts')->where('tenant_id', $c->tenant->id)->where('branch_id', $sale->branch_id)->where('public_id', $data['shift'])->lockForUpdate()->first();
             abort_unless($shift, 404, 'Shift not found.');
             abort_if($shift->closed_at, 422, 'Open a shift before refunding cash.');
             abort_unless($shift->user_id === $c->user->id, 403, 'Refunds must use your own assigned shift.');
+            // Khata still owed on this sale. The customer is locked before products, the same
+            // order sales use, so returns and credit sales cannot deadlock on each other.
+            $ledger = app(CustomerCredit::class);
+            [$charged, $reversed] = $ledger->saleCredit($c->tenant->id, $sale->id);
+            $open = bcsub($charged, $reversed, 2);
+            $customer = $sale->customer_id && bccomp($open, '0', 2) > 0 ? $ledger->lock($c->tenant->id, $sale->customer_id) : null;
             $source = DB::table('sale_lines as l')->join('products as p', 'p.id', '=', 'l.product_id')->where('l.tenant_id', $c->tenant->id)->where('l.sale_id', $sale->id)->select('l.*', 'p.public_id as product')->get()->keyBy('product');
             $products = DB::table('products')->where('tenant_id', $c->tenant->id)->whereIn('public_id', array_column($data['lines'], 'product'))->orderBy('id')->lockForUpdate()->get()->keyBy('public_id');
             $rows = [];
@@ -76,11 +82,19 @@ final class ReturnService
                 $total = bcadd($total, $amount, 2);
                 $tax = bcadd($tax, $lineTax, 2);
             }
+            // Credit-first refund: reduce the khata by what this sale still owes on credit, the
+            // remainder is cash. Capped at the current balance so a customer who already paid
+            // the khata back is refunded in cash instead of being given a negative balance.
+            $creditPart = $customer ? Decimal::min(Decimal::min($total, $open), CustomerCredit::money($customer->balance)) : '0.00';
             // Never alter the source sale/tenders/COGS. A separate cash refund reduces this shift's expected cash.
-            $id = DB::table('sale_returns')->insertGetId(['public_id' => $data['idempotency_key'], 'tenant_id' => $c->tenant->id, 'branch_id' => $sale->branch_id, 'sale_id' => $sale->id, 'warehouse_id' => $sale->warehouse_id, 'shift_id' => $shift->id, 'user_id' => $c->user->id, 'payload_hash' => $hash, 'receipt_number' => 'CR-'.strtoupper(str_replace('-', '', $data['idempotency_key'])), 'total' => $total, 'tax_total' => $tax, 'cost_reversed' => $cost, 'reason' => $data['reason'], 'created_at' => now()]);
+            $id = DB::table('sale_returns')->insertGetId(['public_id' => $data['idempotency_key'], 'tenant_id' => $c->tenant->id, 'branch_id' => $sale->branch_id, 'sale_id' => $sale->id, 'warehouse_id' => $sale->warehouse_id, 'shift_id' => $shift->id, 'user_id' => $c->user->id, 'payload_hash' => $hash, 'receipt_number' => 'CR-'.strtoupper(str_replace('-', '', $data['idempotency_key'])), 'total' => $total, 'tax_total' => $tax, 'cost_reversed' => $cost, 'credit_amount' => $creditPart, 'reason' => $data['reason'], 'created_at' => now()]);
             foreach ($rows as $row) {
                 DB::table('sale_return_lines')->insert($row + ['return_id' => $id]);
-            }Audit::record('sale.returned', $c->tenant->id, $data['idempotency_key'], ['sale' => $sale->public_id, 'total' => $total]);
+            }
+            if ($customer && bccomp($creditPart, '0', 2) > 0) {
+                $ledger->append($c, $customer, 'credit_return', bcsub('0', $creditPart, 2), $data['idempotency_key'], $hash, ['branch_id' => $sale->branch_id, 'shift_id' => $shift->id, 'sale_id' => $sale->id, 'return_id' => $id, 'note' => $data['reason']]);
+            }
+            Audit::record('sale.returned', $c->tenant->id, $data['idempotency_key'], ['sale' => $sale->public_id, 'total' => $total, 'credit_amount' => $creditPart]);
 
             return $this->document($c, $data['idempotency_key']);
         }, 3);
@@ -93,9 +107,10 @@ final class ReturnService
         $c->authorize('sales.refund', $r->branch_id);
         $data = (array) $r;
         unset($data['payload_hash']);
-        foreach (['total', 'tax_total'] as $f) {
+        foreach (['total', 'tax_total', 'credit_amount'] as $f) {
             $data[$f] = bcadd((string) $data[$f], '0', 2);
-        }$data['cost_reversed'] = bcadd((string) $data['cost_reversed'], '0', 4);
+        }
+        $data['cash_amount'] = bcsub($data['total'], $data['credit_amount'], 2);$data['cost_reversed'] = bcadd((string) $data['cost_reversed'], '0', 4);
         $data['lines'] = DB::table('sale_return_lines as r')->join('sale_lines as l', 'l.id', '=', 'r.sale_line_id')->where('r.return_id', $r->id)->select('l.name', 'r.quantity', 'r.total', 'r.tax', 'r.cost_reversed', 'r.restocked')->get();
         if (! $c->allows('products.view_cost', $r->branch_id)) {
             unset($data['cost_reversed']);

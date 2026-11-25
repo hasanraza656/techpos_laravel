@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Domain\Operations\CustomerCredit;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -34,6 +35,8 @@ class DatabaseSeeder extends Seeder
             'integrations' => ['Advanced integrations', 'Integrations', []], 'priority_support' => ['Priority support', 'Administration', []],
         ];
         $features['builtin_intelligence'] = ['Built-in Intelligence', 'Reports', ['daily_summary']];
+        // Appended after the slices below so plan inclusion lists stay unchanged; entitled to every plan explicitly.
+        $features['customer_credit'] = ['Customer credit (khata)', 'Customers', ['customers']];
         foreach ($features as $key => [$name,$category,$deps]) {
             $this->defaults('features', ['key' => $key], ['name' => $name, 'category' => $category, 'description' => $name.' capability. Entitlement does not indicate workflow implementation.', 'dependencies' => json_encode($deps), 'requires_configuration' => in_array($key, ['integrations', 'ai_framework'])]);
         }
@@ -46,7 +49,7 @@ class DatabaseSeeder extends Seeder
             $this->defaults('plans', ['key' => $key], ['name' => $name, 'description' => $key === 'free' ? 'A useful permanent starting plan.' : 'Monthly '.$name.' entitlements.', 'limits' => json_encode($limits), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
             $id = DB::table('plans')->where('key', $key)->value('id');
             $this->defaults('plan_prices', ['plan_id' => $id, 'currency' => 'PKR', 'interval' => 'month'], ['amount' => $price, 'created_at' => now(), 'updated_at' => now()]);
-            foreach ($isNewPlan ? array_unique([...$included, 'builtin_intelligence']) : [] as $f) {
+            foreach ($isNewPlan ? array_unique([...$included, 'builtin_intelligence', 'customer_credit']) : [] as $f) {
                 $this->defaults('feature_entitlements', ['plan_id' => $id, 'feature_id' => DB::table('features')->where('key', $f)->value('id')], []);
             }
         }
@@ -73,6 +76,9 @@ class DatabaseSeeder extends Seeder
                 $name = ucfirst(str_replace('_', ' ', $action)).' '.$module;
                 $this->defaults('permissions', ['key' => "$module.$action"], ['module' => $module, 'name' => $name, 'description' => $name.' within the assigned business and branch scope.']);
             }
+        }
+        foreach (CustomerCredit::PERMISSIONS as $key => [$name, $description]) {
+            $this->defaults('permissions', ['key' => $key], ['module' => 'customers', 'name' => $name, 'description' => $description]);
         }
         foreach (['product' => 'Product', 'customer' => 'Customer', 'sale' => 'Sale', 'cashier' => 'Cashier', 'stock' => 'Stock', 'dashboard' => 'Dashboard', 'settings' => 'Settings', 'subscription' => 'Subscription', 'save' => 'Save changes', 'cancel' => 'Cancel'] as $key => $value) {
             $this->defaults('label_translations', ['key' => $key, 'locale' => 'en'], ['section' => in_array($key, ['save', 'cancel']) ? 'actions' : 'navigation', 'value' => $value, 'review_status' => 'reviewed', 'created_at' => now(), 'updated_at' => now()]);

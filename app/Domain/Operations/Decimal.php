@@ -35,6 +35,11 @@ final class Decimal
         return self::round(bcmul($a, $b, 12), $scale);
     }
 
+    public static function min(string $a, string $b, int $scale = 2): string
+    {
+        return bcadd(bccomp($a, $b, $scale) <= 0 ? $a : $b, '0', $scale);
+    }
+
     public static function fail(string $key, string $message): never
     {
         throw ValidationException::withMessages([$key => $message]);
