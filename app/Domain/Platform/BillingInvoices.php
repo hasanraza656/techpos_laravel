@@ -28,11 +28,13 @@ final class BillingInvoices
         $setup = json_decode(DB::table('onboarding_progress')->where('tenant_id', $tenantId)->value('data') ?? '{}', true);
         $uuid = (string) Str::uuid();
         $paid = $payment?->status === 'approved';
-        $id = DB::table('billing_invoices')->insertGetId(['public_id' => $uuid, 'number' => 'TP-SUB-'.now()->format('Ym').'-'.strtoupper(substr(str_replace('-', '', $uuid), 0, 12)),
+        // The number's month always matches the issue date stored on the invoice (both UTC).
+        $issuedOn = $payment?->created_at?->toDateString() ?? now()->toDateString();
+        $id = DB::table('billing_invoices')->insertGetId(['public_id' => $uuid, 'number' => 'TP-SUB-'.str_replace('-', '', substr($issuedOn, 0, 7)).'-'.strtoupper(substr(str_replace('-', '', $uuid), 0, 12)),
             'tenant_id' => $tenantId, 'plan_id' => $planId, 'payment_id' => $payment?->id, 'request_key' => $requestKey, 'status' => $paid ? 'paid' : 'issued', 'currency' => 'PKR', 'amount' => bcadd((string) $price, '0', 2),
             'seller' => json_encode($seller), 'client' => json_encode(['name' => $tenant->name, 'email' => $contact['email'] ?? '', 'phone' => $contact['phone'] ?? ($setup['phone'] ?? ''), 'address' => $contact['address'] ?? ($setup['address'] ?? '')]),
             'lines' => json_encode([['description' => $plan->name.' subscription (one month)', 'quantity' => '1', 'unit_price' => bcadd((string) $price, '0', 2), 'total' => bcadd((string) $price, '0', 2)]]),
-            'issued_on' => $payment?->created_at?->toDateString() ?? now()->toDateString(), 'due_on' => $dueOn, 'paid_at' => $paid ? ($payment->reviewed_at ?? $payment->applied_at) : null, 'created_at' => now(), 'updated_at' => now()]);
+            'issued_on' => $issuedOn, 'due_on' => $dueOn, 'paid_at' => $paid ? ($payment->reviewed_at ?? $payment->applied_at) : null, 'created_at' => now(), 'updated_at' => now()]);
         Audit::record('billing.invoice_issued', $tenantId, $uuid, ['source_payment' => $payment?->public_id]);
 
         return DB::table('billing_invoices')->find($id);

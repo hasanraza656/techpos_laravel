@@ -127,6 +127,19 @@ class PaymentsTest extends TestCase
         $this->submit($this->draft());
     }
 
+    public function test_invoice_number_month_matches_its_issue_date(): void
+    {
+        $id = $this->draft();
+        // Unsaved copy: the draft already owns its invoice, and each payment links to one invoice.
+        $payment = \App\Models\SubscriptionPayment::where('public_id', $id)->first()->replicate();
+        // An invoice created later (e.g. backfill) for an older request keeps the request's month in both places.
+        $payment->created_at = \Illuminate\Support\Carbon::parse('2026-10-31 20:00:00');
+        $this->travelTo('2026-11-02 09:00:00');
+        $invoice = app(\App\Domain\Platform\BillingInvoices::class)->issue($this->tenant->id, $payment->plan_id, 'backfill-test', '2026-11-30', $payment);
+        $this->assertSame('2026-10-31', substr((string) $invoice->issued_on, 0, 10));
+        $this->assertStringStartsWith('TP-SUB-202610-', $invoice->number);
+    }
+
     public function test_failed_proof_transaction_leaves_no_orphaned_file(): void
     {
         $id = $this->draft();
